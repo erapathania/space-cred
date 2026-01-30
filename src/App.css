@@ -1,0 +1,402 @@
+/**
+ * App Styles
+ * Clean, professional styling for Space Allocation System
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #0a0a0a;
+  color: #fff;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  border-bottom: 2px solid #4CAF50;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-content h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.role-switcher {
+  display: flex;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.role-btn {
+  padding: 10px 20px;
+  border: 2px solid transparent;
+  background: transparent;
+  color: #888;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.role-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.role-btn.active {
+  background: #4CAF50;
+  color: #fff;
+  border-color: #4CAF50;
+}
+
+.subtitle {
+  margin: 4px 0 0 0;
+  font-size: 14px;
+  color: #888;
+}
+
+.app-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 16px;
+  padding: 16px;
+}
+
+.viewer-section {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.sidebar {
+  width: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 4px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 4px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: #4a4a4a;
+}
+
+.panel {
+  background: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.panel h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.hint {
+  font-size: 13px;
+  color: #888;
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat-item {
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-item.highlight {
+  border-color: #2196F3;
+  background: rgba(33, 150, 243, 0.1);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.stat-value.green {
+  color: #4CAF50;
+}
+
+.stat-value.orange {
+  color: #FF9800;
+}
+
+.stat-value.gray {
+  color: #9E9E9E;
+}
+
+.stat-value.blue {
+  color: #2196F3;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  display: inline-block;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background: #2196F3;
+  color: #fff;
+}
+
+.btn-primary:not(:disabled):hover {
+  background: #1976D2;
+}
+
+.btn-success {
+  background: #4CAF50;
+  color: #fff;
+}
+
+.btn-success:not(:disabled):hover {
+  background: #388E3C;
+}
+
+.btn-secondary {
+  background: #3a3a3a;
+  color: #fff;
+}
+
+.btn-secondary:not(:disabled):hover {
+  background: #4a4a4a;
+}
+
+.btn-danger {
+  background: #f44336;
+  color: #fff;
+}
+
+.btn-danger:not(:disabled):hover {
+  background: #d32f2f;
+}
+
+.btn-sm {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.btn-green {
+  background: #4CAF50;
+  color: #fff;
+}
+
+.btn-green:not(:disabled):hover {
+  background: #388E3C;
+}
+
+.btn-orange {
+  background: #FF9800;
+  color: #fff;
+}
+
+.btn-orange:not(:disabled):hover {
+  background: #F57C00;
+}
+
+.btn-gray {
+  background: #9E9E9E;
+  color: #fff;
+}
+
+.btn-gray:not(:disabled):hover {
+  background: #757575;
+}
+
+.app-footer {
+  background: #1a1a1a;
+  border-top: 1px solid #3a3a3a;
+  padding: 12px 24px;
+  text-align: center;
+}
+
+.app-footer p {
+  margin: 0;
+  font-size: 12px;
+  color: #666;
+}
+
+/* Strategy select */
+.strategy-select {
+  width: 100%;
+  padding: 10px 12px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.strategy-select:hover {
+  border-color: #4a4a4a;
+}
+
+.strategy-select:focus {
+  outline: none;
+  border-color: #4CAF50;
+}
+
+.strategy-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Layout list */
+.layout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.layout-item {
+  width: 100%;
+  padding: 12px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.layout-item:hover {
+  background: #3a3a3a;
+  border-color: #4a4a4a;
+}
+
+.layout-item.active {
+  background: rgba(76, 175, 80, 0.1);
+  border-color: #4CAF50;
+}
+
+.layout-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.layout-meta {
+  font-size: 12px;
+  color: #888;
+}
+
+/* Readonly badge */
+.readonly-badge {
+  background: #f44336;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .sidebar {
+    width: 280px;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-main {
+    flex-direction: column;
+  }
+  
+  .sidebar {
+    width: 100%;
+    max-height: 300px;
+  }
+}
