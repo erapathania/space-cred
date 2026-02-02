@@ -29,11 +29,22 @@ export const AllocationStrategy = {
 
 export type AllocationStrategy = typeof AllocationStrategy[keyof typeof AllocationStrategy];
 
+// Table (rectangular block) - ADMIN creates by drawing rectangles
+export interface Table {
+  table_id: string;
+  x: number;  // Top-left corner X
+  y: number;  // Top-left corner Y
+  width: number;
+  height: number;
+  capacity: number;  // Max seats this table can hold
+}
+
 // Reference seat (red dot) - ADMIN creates, FACILITY_USER views
 export interface ReferenceSeat {
   seat_ref_id: string;
   x: number;  // Raw image pixel coordinate
   y: number;  // Raw image pixel coordinate
+  table_id?: string;  // Assigned table (computed after table mapping)
 }
 
 // Allocated seat (green/orange/gray) - computed by allocation logic
