@@ -1,29 +1,30 @@
 /**
- * FloorPlanViewer Component - WITH TEAM COLOR CODING
+ * FloorPlanViewer Component - TABLE-FIRST ARCHITECTURE
  * 
- * ADMIN: Can create reference seats (red dots)
+ * ADMIN: Can create reference seats (red dots) AND draw table rectangles
  * FACILITY_USER: Views colored team allocations
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import type { ReferenceSeat, AllocatedSeat } from '../types';
+import type { ReferenceSeat, AllocatedSeat, Table } from '../types';
 import { SEAT_COLORS, REFERENCE_SEAT_COLOR } from '../types';
 import './FloorPlanViewer.css';
 
-// Seat rendering constants
-const REF_SEAT_RADIUS = 12; // Larger reference seats
-const ALLOC_SEAT_SIZE = 24; // Square allocated seats (easier to see labels)
+// Rendering constants
+const REF_SEAT_RADIUS = 12;
+const ALLOC_SEAT_SIZE = 24;
 
 interface FloorPlanViewerProps {
   imagePath: string;
   referenceSeats: ReferenceSeat[];
   allocatedSeats: AllocatedSeat[];
+  tables: Table[];
   onDirectClick?: (x: number, y: number) => void;
+  onTableDrawn?: (table: Omit<Table, 'table_id'>) => void;
   isReferenceMarkingMode?: boolean;
+  isTableDrawingMode?: boolean;
+  showTableBoundaries?: boolean;
   isReadOnly?: boolean;
-  currentOptionDescription?: string;
-  getEmployeeNames?: (teamId: string) => string[];
-  getTeamName?: (teamId: string) => string;
   getTeamColor?: (teamId: string) => string;
   highlightedTeam?: string | null;
 }
@@ -35,12 +36,23 @@ interface ViewBox {
   h: number;
 }
 
+interface DrawingRect {
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
+
 export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   imagePath,
   referenceSeats,
   allocatedSeats,
+  tables,
   onDirectClick,
+  onTableDrawn,
   isReferenceMarkingMode = false,
+  isTableDrawingMode = false,
+  showTableBoundaries = false,
   isReadOnly = false,
   getTeamColor,
   highlightedTeam,
@@ -52,6 +64,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [hoveredSeat, setHoveredSeat] = useState<AllocatedSeat | null>(null);
+  const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
   
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -68,21 +81,115 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
     img.src = imagePath;
   }, [imagePath]);
 
-  // Handle SVG click
-  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!svgRef.current || isReadOnly) return;
-
+  // Get SVG coordinates from mouse event
+  const getSvgCoords = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return null;
     const svg = svgRef.current;
     const pt = svg.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
-    
     const cursor = pt.matrixTransform(svg.getScreenCTM()!.inverse());
-    const clickX = Math.round(cursor.x);
-    const clickY = Math.round(cursor.y);
+    return { x: Math.round(cursor.x), y: Math.round(cursor.y) };
+  };
 
+  // Handle mouse down
+  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (isReadOnly) return;
+
+    const coords = getSvgCoords(e);
+    if (!coords) return;
+
+    // Table drawing mode
+    if (isTableDrawingMode) {
+      setDrawingRect({
+        startX: coords.x,
+        startY: coords.y,
+        currentX: coords.x,
+        currentY: coords.y,
+      });
+      return;
+    }
+
+    // Pan mode (when not in any special mode)
+    if (!isReferenceMarkingMode && e.button === 0) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  // Handle mouse move
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Update drawing rectangle
+    if (drawingRect && isTableDrawingMode) {
+      const coords = getSvgCoords(e);
+      if (coords) {
+        setDrawingRect({
+          ...drawingRect,
+          currentX: coords.x,
+          currentY: coords.y,
+        });
+      }
+      return;
+    }
+
+    // Pan
+    if (isPanning && svgRef.current) {
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      
+      const svg = svgRef.current;
+      const ctm = svg.getScreenCTM();
+      if (ctm) {
+        const scale = ctm.a;
+        const svgDx = -dx / scale;
+        const svgDy = -dy / scale;
+        
+        setView(v => ({
+          x: v.x + svgDx,
+          y: v.y + svgDy,
+          w: v.w,
+          h: v.h,
+        }));
+        
+        setPanStart({ x: e.clientX, y: e.clientY });
+      }
+    }
+  };
+
+  // Handle mouse up
+  const handleMouseUp = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Finish drawing table
+    if (drawingRect && isTableDrawingMode && onTableDrawn) {
+      const x = Math.min(drawingRect.startX, drawingRect.currentX);
+      const y = Math.min(drawingRect.startY, drawingRect.currentY);
+      const width = Math.abs(drawingRect.currentX - drawingRect.startX);
+      const height = Math.abs(drawingRect.currentY - drawingRect.startY);
+
+      // Only create table if rectangle is big enough
+      if (width > 20 && height > 20) {
+        onTableDrawn({
+          x,
+          y,
+          width,
+          height,
+          capacity: 10, // Default capacity, can be edited later
+        });
+      }
+
+      setDrawingRect(null);
+      return;
+    }
+
+    setIsPanning(false);
+  };
+
+  // Handle click (for seat marking)
+  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (isReferenceMarkingMode && onDirectClick) {
-      onDirectClick(clickX, clickY);
+      const coords = getSvgCoords(e);
+      if (coords) {
+        onDirectClick(coords.x, coords.y);
+      }
     }
   };
 
@@ -118,42 +225,6 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
     setView({ x: 0, y: 0, w: imgW, h: imgH });
   };
 
-  // Pan controls
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0 && !isReferenceMarkingMode) {
-      setIsPanning(true);
-      setPanStart({ x: e.clientX, y: e.clientY });
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isPanning && svgRef.current) {
-      const dx = e.clientX - panStart.x;
-      const dy = e.clientY - panStart.y;
-      
-      const svg = svgRef.current;
-      const ctm = svg.getScreenCTM();
-      if (ctm) {
-        const scale = ctm.a;
-        const svgDx = -dx / scale;
-        const svgDy = -dy / scale;
-        
-        setView(v => ({
-          x: v.x + svgDx,
-          y: v.y + svgDy,
-          w: v.w,
-          h: v.h,
-        }));
-        
-        setPanStart({ x: e.clientX, y: e.clientY });
-      }
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsPanning(false);
-  };
-
   if (!imgW || !imgH) {
     return <div className="floor-plan-loading">Loading floor plan...</div>;
   }
@@ -169,6 +240,12 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
     }
   });
 
+  // Determine cursor style
+  let cursorStyle = 'grab';
+  if (isPanning) cursorStyle = 'grabbing';
+  else if (isReferenceMarkingMode) cursorStyle = 'crosshair';
+  else if (isTableDrawingMode) cursorStyle = 'crosshair';
+
   return (
     <div className="floor-plan-viewer">
       <div className="viewer-header">
@@ -177,6 +254,8 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
           <span className="dimension-badge">{imgW} × {imgH} pixels</span>
           <span className="zoom-badge">{Math.round(zoom * 100)}%</span>
           {isReadOnly && <span className="readonly-badge">READ-ONLY</span>}
+          {isTableDrawingMode && <span className="mode-badge">DRAWING TABLES</span>}
+          {showTableBoundaries && <span className="mode-badge">DEBUG MODE</span>}
         </div>
         <div className="zoom-controls">
           <button onClick={handleZoomIn} className="zoom-btn">+</button>
@@ -187,17 +266,16 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
 
       <div 
         className="viewer-canvas"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        style={{ cursor: isPanning ? 'grabbing' : isReferenceMarkingMode ? 'crosshair' : 'grab' }}
+        style={{ cursor: cursorStyle }}
       >
         <svg
           ref={svgRef}
           width={imgW}
           height={imgH}
           viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
           onClick={handleSvgClick}
           className="floor-plan-svg"
         >
@@ -210,6 +288,60 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             height={imgH}
             preserveAspectRatio="none"
           />
+
+          {/* Tables (debug mode or always show in admin) */}
+          {(showTableBoundaries || isTableDrawingMode) && tables.map(table => {
+            const seatsInTable = referenceSeats.filter(s => s.table_id === table.table_id).length;
+            return (
+              <g key={table.table_id}>
+                <rect
+                  x={table.x}
+                  y={table.y}
+                  width={table.width}
+                  height={table.height}
+                  fill="rgba(255, 215, 0, 0.1)"
+                  stroke="#FFD700"
+                  strokeWidth={2}
+                  strokeDasharray="10,5"
+                  style={{ pointerEvents: 'none' }}
+                />
+                <text
+                  x={table.x + 10}
+                  y={table.y + 20}
+                  fill="#FFD700"
+                  fontSize="14"
+                  fontWeight="bold"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {table.table_id}
+                </text>
+                <text
+                  x={table.x + 10}
+                  y={table.y + 40}
+                  fill="#FFD700"
+                  fontSize="12"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  Cap: {table.capacity} | Seats: {seatsInTable}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Drawing rectangle (while dragging) */}
+          {drawingRect && (
+            <rect
+              x={Math.min(drawingRect.startX, drawingRect.currentX)}
+              y={Math.min(drawingRect.startY, drawingRect.currentY)}
+              width={Math.abs(drawingRect.currentX - drawingRect.startX)}
+              height={Math.abs(drawingRect.currentY - drawingRect.startY)}
+              fill="rgba(255, 215, 0, 0.2)"
+              stroke="#FFD700"
+              strokeWidth={3}
+              strokeDasharray="5,5"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
 
           {/* Reference seats (RED DOTS) */}
           {referenceSeats.map((refSeat) => (
@@ -227,7 +359,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
           ))}
 
           {/* Allocated seats (COLORED SQUARES WITH LABELS) */}
-          {allocatedSeats.map((seat, index) => {
+          {allocatedSeats.map((seat) => {
             const teamSeats = seat.assigned_team ? seatsByTeam.get(seat.assigned_team) || [] : [];
             const seatNumber = teamSeats.indexOf(seat) + 1;
             const color = seat.assigned_team && getTeamColor 
@@ -239,7 +371,6 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             
             return (
               <g key={`alloc-${seat.seat_ref_id}`}>
-                {/* Square seat */}
                 <rect
                   x={seat.x - ALLOC_SEAT_SIZE / 2}
                   y={seat.y - ALLOC_SEAT_SIZE / 2}
@@ -255,7 +386,6 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   style={{ pointerEvents: 'all', cursor: 'pointer' }}
                 />
                 
-                {/* Seat number label */}
                 {seat.assigned_team && (
                   <text
                     x={seat.x}
@@ -291,8 +421,8 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
 
       <div className="viewer-instructions">
         <span className="legend-item"><span className="dot red"></span> Red = Reference seats</span>
+        {tables.length > 0 && <span className="legend-item"><span className="dot gold"></span> Gold = Tables</span>}
         <span className="legend-item">Colored squares = Team assignments</span>
-        <span className="legend-item">Numbers = Seat order within team</span>
       </div>
     </div>
   );

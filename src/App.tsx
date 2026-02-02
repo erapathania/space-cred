@@ -1,17 +1,17 @@
 /**
- * Main App Component
- * ROLE-BASED ARCHITECTURE
+ * Main App Component - TABLE-FIRST ARCHITECTURE
  * 
- * ROLE 1: ADMIN - One-time coordinate setup
- * ROLE 2: FACILITY_USER - Daily seat allocation
+ * ROLE 1: ADMIN - Setup seats AND tables
+ * ROLE 2: FACILITY_USER - View table-based allocations
  */
 
 import { useState, useEffect } from 'react';
 import { FloorPlanViewer } from './components/FloorPlanViewer';
-import type { ReferenceSeat, AllocatedSeat, AllocationOption } from './types';
+import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table } from './types';
 import { UserRole, SeatStatus } from './types';
-import { saveReferenceSeats, loadReferenceSeats } from './utils/storage';
-import { generateAllOptions } from './utils/allocationEngine';
+import { saveReferenceSeats, loadReferenceSeats, saveTables, loadTables } from './utils/storage';
+import { generateTableBasedOptions } from './utils/tableAllocationEngine';
+import { mapSeatsToTables } from './utils/tableMapping';
 import { DUMMY_TEAMS, getTeamColor } from './data/teams';
 import './App.css';
 
@@ -23,6 +23,13 @@ function App() {
   const [referenceSeats, setReferenceSeats] = useState<ReferenceSeat[]>([]);
   const [isReferenceMarkingMode, setIsReferenceMarkingMode] = useState(false);
   
+  // Tables (GOLD RECTANGLES) - managed by ADMIN
+  const [tables, setTables] = useState<Table[]>([]);
+  const [isTableDrawingMode, setIsTableDrawingMode] = useState(false);
+  
+  // Debug mode
+  const [showTableBoundaries, setShowTableBoundaries] = useState(false);
+  
   // Allocation options and current selection
   const [allocationOptions, setAllocationOptions] = useState<AllocationOption[]>([]);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
@@ -31,10 +38,12 @@ function App() {
   // Team highlighting
   const [highlightedTeam, setHighlightedTeam] = useState<string | null>(null);
 
-  // Load reference seats on mount
+  // Load reference seats and tables on mount
   useEffect(() => {
-    const loaded = loadReferenceSeats();
-    setReferenceSeats(loaded);
+    const loadedSeats = loadReferenceSeats();
+    const loadedTables = loadTables();
+    setReferenceSeats(loadedSeats);
+    setTables(loadedTables);
   }, []);
 
   // Generate unique reference seat ID
@@ -46,6 +55,20 @@ function App() {
     while (existingIds.has(newId)) {
       counter++;
       newId = `REF-${counter.toString().padStart(3, '0')}`;
+    }
+    
+    return newId;
+  };
+
+  // Generate unique table ID
+  const generateTableId = (): string => {
+    const existingIds = new Set(tables.map(t => t.table_id));
+    let counter = 1;
+    let newId = `TABLE-${counter.toString().padStart(3, '0')}`;
+    
+    while (existingIds.has(newId)) {
+      counter++;
+      newId = `TABLE-${counter.toString().padStart(3, '0')}`;
     }
     
     return newId;
@@ -69,19 +92,42 @@ function App() {
     console.log(`✅ Created reference seat: ${newRefSeat.seat_ref_id} at (${newRefSeat.x}, ${newRefSeat.y})`);
   };
 
-  // ADMIN: Save seat map permanently
+  // ADMIN: Create table by drawing rectangle
+  const handleTableDrawn = (tableData: Omit<Table, 'table_id'>) => {
+    const newTable: Table = {
+      table_id: generateTableId(),
+      ...tableData,
+    };
+
+    setTables(prev => [...prev, newTable]);
+    console.log(`✅ Created table: ${newTable.table_id} at (${newTable.x}, ${newTable.y}) size ${newTable.width}x${newTable.height}`);
+  };
+
+  // ADMIN: Save seat map + tables permanently
   const handleSaveSeatMap = () => {
     if (referenceSeats.length === 0) {
       alert('No reference seats to save. Create some first.');
       return;
     }
 
+    if (tables.length === 0) {
+      alert('⚠️ No tables defined!\n\nYou should draw tables first for proper allocation.');
+    }
+
     try {
-      saveReferenceSeats(referenceSeats);
-      alert(`✅ Saved ${referenceSeats.length} reference seats successfully!\n\nThese seats are now available for facility users.`);
+      // Map seats to tables
+      const mappedSeats = mapSeatsToTables(referenceSeats, tables);
+      
+      saveReferenceSeats(mappedSeats);
+      saveTables(tables);
+      
+      setReferenceSeats(mappedSeats);
+      
+      alert(`✅ Saved successfully!\n\nSeats: ${mappedSeats.length}\nTables: ${tables.length}\n\nSeats have been mapped to tables.`);
       setIsReferenceMarkingMode(false);
+      setIsTableDrawingMode(false);
     } catch (error) {
-      alert('Failed to save seat map. Please try again.');
+      alert('Failed to save. Please try again.');
     }
   };
 
@@ -95,6 +141,19 @@ function App() {
       setReferenceSeats([]);
       saveReferenceSeats([]);
       console.log(`✅ Cleared all reference seats`);
+    }
+  };
+
+  // ADMIN: Clear all tables
+  const handleClearTables = () => {
+    const confirmed = window.confirm(
+      'Delete ALL tables?'
+    );
+
+    if (confirmed) {
+      setTables([]);
+      saveTables([]);
+      console.log(`✅ Cleared all tables`);
     }
   };
 
@@ -120,10 +179,15 @@ function App() {
   // FACILITY USER FUNCTIONS
   // ============================================
 
-  // FACILITY_USER: Generate all allocation options
+  // FACILITY_USER: Generate table-based allocation
   const handleGenerateOptions = () => {
     if (referenceSeats.length === 0) {
       alert('No reference seats available. Contact admin to set up seat map.');
+      return;
+    }
+
+    if (tables.length === 0) {
+      alert('⚠️ No tables defined!\n\nContact admin to draw tables first.\n\nTable-based allocation requires tables.');
       return;
     }
 
@@ -133,8 +197,14 @@ function App() {
       return;
     }
 
-    console.log(`🎲 Generating allocation options for ${DUMMY_TEAMS.length} teams...`);
-    const options = generateAllOptions(referenceSeats, DUMMY_TEAMS);
+    console.log(`🏢 Generating TABLE-BASED allocation for ${DUMMY_TEAMS.length} teams...`);
+    
+    // Map seats to tables if not already mapped
+    const mappedSeats = referenceSeats.every(s => s.table_id)
+      ? referenceSeats
+      : mapSeatsToTables(referenceSeats, tables);
+    
+    const options = generateTableBasedOptions(mappedSeats, tables, DUMMY_TEAMS);
     setAllocationOptions(options);
     
     // Auto-select first option
@@ -143,7 +213,7 @@ function App() {
       setAllocatedSeats(options[0].allocations);
     }
 
-    console.log(`✅ Generated ${options.length} allocation options`);
+    console.log(`✅ Generated ${options.length} allocation option(s)`);
   };
 
   // FACILITY_USER: Switch between options
@@ -159,10 +229,9 @@ function App() {
   // Statistics
   const stats = {
     referenceSeats: referenceSeats.length,
+    tables: tables.length,
     allocatedTotal: allocatedSeats.length,
     assignable: allocatedSeats.filter(s => s.seat_type === SeatStatus.ASSIGNABLE).length,
-    reserved: allocatedSeats.filter(s => s.seat_type === SeatStatus.RESERVED).length,
-    buffer: allocatedSeats.filter(s => s.seat_type === SeatStatus.BUFFER).length,
     teams: DUMMY_TEAMS.length,
     totalTeamSize: DUMMY_TEAMS.reduce((sum, team) => sum + team.team_size, 0),
   };
@@ -172,7 +241,7 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <h1>🏢 Space Allocation System V1</h1>
-          <p className="subtitle">Role-Based Seat Management</p>
+          <p className="subtitle">Table-First Architecture</p>
         </div>
         <div className="role-switcher">
           <button
@@ -180,6 +249,7 @@ function App() {
             onClick={() => {
               setCurrentRole(UserRole.ADMIN);
               setIsReferenceMarkingMode(false);
+              setIsTableDrawingMode(false);
             }}
           >
             👤 ADMIN
@@ -189,6 +259,7 @@ function App() {
             onClick={() => {
               setCurrentRole(UserRole.FACILITY_USER);
               setIsReferenceMarkingMode(false);
+              setIsTableDrawingMode(false);
             }}
           >
             👥 FACILITY USER
@@ -202,8 +273,12 @@ function App() {
             imagePath="/assets/floor-plan.jpg"
             referenceSeats={referenceSeats}
             allocatedSeats={allocatedSeats}
+            tables={tables}
             onDirectClick={handleAdminClick}
+            onTableDrawn={handleTableDrawn}
             isReferenceMarkingMode={isReferenceMarkingMode}
+            isTableDrawingMode={isTableDrawingMode}
+            showTableBoundaries={showTableBoundaries}
             isReadOnly={currentRole === UserRole.FACILITY_USER}
             getTeamColor={getTeamColor}
             highlightedTeam={highlightedTeam}
@@ -218,6 +293,10 @@ function App() {
                 <span className="stat-label">Reference Seats</span>
                 <span className="stat-value">{stats.referenceSeats}</span>
               </div>
+              <div className="stat-item">
+                <span className="stat-label">Tables</span>
+                <span className="stat-value">{stats.tables}</span>
+              </div>
               {currentRole === UserRole.FACILITY_USER && (
                 <>
                   <div className="stat-item">
@@ -231,12 +310,8 @@ function App() {
                 </>
               )}
               <div className="stat-item">
-                <span className="stat-label">Assignable</span>
+                <span className="stat-label">Assigned</span>
                 <span className="stat-value green">{stats.assignable}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Buffer</span>
-                <span className="stat-value gray">{stats.buffer}</span>
               </div>
             </div>
           </div>
@@ -245,24 +320,56 @@ function App() {
           {currentRole === UserRole.ADMIN && (
             <>
               <div className="panel">
-                <h3>🔴 Admin: Reference Marking</h3>
+                <h3>🔴 Step 1: Mark Seats</h3>
                 <p className="hint">
                   {isReferenceMarkingMode 
                     ? '✓ Click anywhere to create RED dots' 
-                    : 'Mark where seats physically exist on floor plan'}
+                    : 'Mark where seats physically exist'}
                 </p>
                 <button
                   className={`btn ${isReferenceMarkingMode ? 'btn-success' : 'btn-primary'}`}
-                  onClick={() => setIsReferenceMarkingMode(!isReferenceMarkingMode)}
+                  onClick={() => {
+                    setIsReferenceMarkingMode(!isReferenceMarkingMode);
+                    setIsTableDrawingMode(false);
+                  }}
                 >
-                  {isReferenceMarkingMode ? '✓ Marking Mode ON' : 'Enable Marking Mode'}
+                  {isReferenceMarkingMode ? '✓ Marking Seats' : 'Mark Seats'}
                 </button>
               </div>
 
               <div className="panel">
-                <h3>💾 Save Seat Map</h3>
+                <h3>🟡 Step 2: Draw Tables</h3>
                 <p className="hint">
-                  Save reference seats permanently. Facility users will see these seats.
+                  {isTableDrawingMode 
+                    ? '✓ Drag to draw table rectangles' 
+                    : 'Draw rectangles around table areas'}
+                </p>
+                <button
+                  className={`btn ${isTableDrawingMode ? 'btn-success' : 'btn-primary'}`}
+                  onClick={() => {
+                    setIsTableDrawingMode(!isTableDrawingMode);
+                    setIsReferenceMarkingMode(false);
+                  }}
+                >
+                  {isTableDrawingMode ? '✓ Drawing Tables' : 'Draw Tables'}
+                </button>
+              </div>
+
+              <div className="panel">
+                <h3>🔍 Debug Mode</h3>
+                <p className="hint">Show table boundaries and labels</p>
+                <button
+                  className={`btn ${showTableBoundaries ? 'btn-success' : 'btn-secondary'}`}
+                  onClick={() => setShowTableBoundaries(!showTableBoundaries)}
+                >
+                  {showTableBoundaries ? '✓ Showing Tables' : 'Show Tables'}
+                </button>
+              </div>
+
+              <div className="panel">
+                <h3>💾 Step 3: Save</h3>
+                <p className="hint">
+                  Save seats + tables. Seats will be mapped to tables automatically.
                 </p>
                 <div className="button-group">
                   <button
@@ -270,10 +377,10 @@ function App() {
                     onClick={handleSaveSeatMap}
                     disabled={referenceSeats.length === 0}
                   >
-                    💾 Save Seat Map
+                    💾 Save Seat Map + Tables
                   </button>
                   <label className="btn btn-secondary">
-                    📥 Import from JSON
+                    📥 Import Seats JSON
                     <input
                       type="file"
                       accept=".json"
@@ -286,7 +393,14 @@ function App() {
                     onClick={handleClearReferenceSeats}
                     disabled={referenceSeats.length === 0}
                   >
-                    🗑️ Clear All
+                    🗑️ Clear Seats
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    onClick={handleClearTables}
+                    disabled={tables.length === 0}
+                  >
+                    🗑️ Clear Tables
                   </button>
                 </div>
               </div>
@@ -296,10 +410,21 @@ function App() {
           {/* FACILITY USER VIEW */}
           {currentRole === UserRole.FACILITY_USER && (
             <>
+              <div className="panel">
+                <h3>🔍 Debug Mode</h3>
+                <p className="hint">Show table boundaries</p>
+                <button
+                  className={`btn ${showTableBoundaries ? 'btn-success' : 'btn-secondary'}`}
+                  onClick={() => setShowTableBoundaries(!showTableBoundaries)}
+                >
+                  {showTableBoundaries ? '✓ Showing Tables' : 'Show Tables'}
+                </button>
+              </div>
+
               {allocationOptions.length > 0 && (
                 <div className="panel">
                   <h3>🎨 Team Legend</h3>
-                  <p className="hint">Hover over a team to highlight its seats on the floor plan</p>
+                  <p className="hint">Hover to highlight team seats</p>
                   <div className="team-legend-list">
                     {DUMMY_TEAMS.map(team => {
                       const teamSeats = allocatedSeats.filter(s => s.assigned_team === team.team_id);
@@ -320,13 +445,13 @@ function App() {
                             <div className="team-legend-info">
                               <div className="team-legend-name">{team.team_name}</div>
                               <div className="team-legend-meta">
-                                Manager: {team.manager} | {teamSeats.length} seats
+                                {team.department} | {team.manager} | {teamSeats.length} seats
                               </div>
                             </div>
                           </div>
                           {teamSeats.length > 0 && (
                             <div className="team-legend-seats">
-                              Seats: {seatIds}
+                              {seatIds}
                             </div>
                           )}
                         </div>
@@ -337,25 +462,27 @@ function App() {
               )}
 
               <div className="panel">
-                <h3>🎲 Generate Allocations</h3>
+                <h3>🎲 Generate Allocation</h3>
                 <p className="hint">
                   {referenceSeats.length === 0
-                    ? '⚠️ No reference seats available. Contact admin.'
-                    : 'Generate 3 allocation options using different strategies'}
+                    ? '⚠️ No seats available'
+                    : tables.length === 0
+                    ? '⚠️ No tables defined'
+                    : 'Generate table-based allocation'}
                 </p>
                 <button
                   className="btn btn-primary"
                   onClick={handleGenerateOptions}
-                  disabled={referenceSeats.length === 0}
+                  disabled={referenceSeats.length === 0 || tables.length === 0}
                 >
-                  🎲 Generate Options
+                  🎲 Generate Allocation
                 </button>
               </div>
 
               {allocationOptions.length > 0 && (
                 <div className="panel">
-                  <h3>📋 Allocation Options</h3>
-                  <p className="hint">Switch between different allocation strategies</p>
+                  <h3>📋 Allocation Result</h3>
+                  <p className="hint">Table-based allocation (teams sit together)</p>
                   <div className="option-list">
                     {allocationOptions.map(option => (
                       <button
@@ -366,8 +493,7 @@ function App() {
                         <div className="option-id">Option {option.option_id}</div>
                         <div className="option-desc">{option.description}</div>
                         <div className="option-stats">
-                          {option.allocations.filter(s => s.seat_type === SeatStatus.ASSIGNABLE).length} assigned, {' '}
-                          {option.allocations.filter(s => s.seat_type === SeatStatus.BUFFER).length} buffer
+                          {option.allocations.length} seats assigned
                         </div>
                       </button>
                     ))}
@@ -380,7 +506,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>Space Allocation System V1 | Role: {currentRole} | Pixel-Perfect Coordinate System</p>
+        <p>Space Allocation System V1 | Role: {currentRole} | Table-First Architecture</p>
       </footer>
     </div>
   );
