@@ -1,11 +1,19 @@
 /**
  * Table-First Allocation Engine
  * 
+ * HIERARCHY = TEAM GROUPING (NOT graph traversal)
+ * 
  * CRITICAL RULES:
- * 1. Teams sit on SAME table (never split)
- * 2. Department → Zone → Table → Team → Seat hierarchy
- * 3. NO buffer logic
- * 4. Table capacity must be >= team size
+ * 1. ONE TEAM → ONE TABLE (never split unless absolutely necessary)
+ * 2. Hierarchy is ONLY for team grouping (manager + direct reports)
+ * 3. NO buffer, NO levels, NO recursive logic
+ * 4. Sort teams by size (largest first) for better table utilization
+ * 
+ * ALLOCATION ORDER:
+ * - For each department
+ * - Sort teams by size (descending)
+ * - Assign each team to ONE table with enough capacity
+ * - Assign specific seats within that table
  */
 
 import type { ReferenceSeat, AllocatedSeat, Table } from '../types';
@@ -42,10 +50,14 @@ export function allocateByTables(
   // Process each department
   for (const department of departments) {
     const deptTeams = getTeamsByDepartment(department);
-    console.log(`\n🔷 Department: ${department} (${deptTeams.length} teams)`);
+    
+    // Sort teams by size (largest first) for better table utilization
+    const sortedTeams = [...deptTeams].sort((a, b) => b.team_size - a.team_size);
+    
+    console.log(`\n🔷 Department: ${department} (${sortedTeams.length} teams)`);
 
     // Process each team in department
-    for (const team of deptTeams) {
+    for (const team of sortedTeams) {
       console.log(`  👥 Team: ${team.team_name} (size: ${team.team_size})`);
 
       // Find available table with enough capacity
