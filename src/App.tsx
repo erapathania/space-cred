@@ -8,9 +8,11 @@
 
 import { useState, useEffect } from 'react';
 import { FloorPlanViewer } from './components/FloorPlanViewer';
-import type { ReferenceSeat, AllocatedSeat, LayoutScenario } from './types';
-import { UserRole, SeatStatus, AllocationStrategy } from './types';
-import { saveReferenceSeats, loadReferenceSeats, saveLayout, loadLayouts } from './utils/storage';
+import type { ReferenceSeat, AllocatedSeat, AllocationOption } from './types';
+import { UserRole, SeatStatus } from './types';
+import { saveReferenceSeats, loadReferenceSeats } from './utils/storage';
+import { generateAllOptions } from './utils/allocationEngine';
+import { DUMMY_TEAMS, getTeamColor } from './data/teams';
 import './App.css';
 
 function App() {
@@ -21,19 +23,18 @@ function App() {
   const [referenceSeats, setReferenceSeats] = useState<ReferenceSeat[]>([]);
   const [isReferenceMarkingMode, setIsReferenceMarkingMode] = useState(false);
   
-  // Allocated seats (GREEN/ORANGE/GRAY) - computed for FACILITY_USER
+  // Allocation options and current selection
+  const [allocationOptions, setAllocationOptions] = useState<AllocationOption[]>([]);
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [allocatedSeats, setAllocatedSeats] = useState<AllocatedSeat[]>([]);
-  const [selectedStrategy, setSelectedStrategy] = useState<typeof AllocationStrategy[keyof typeof AllocationStrategy]>(AllocationStrategy.MAX_TEAM_COHESION);
-  const [layouts, setLayouts] = useState<LayoutScenario[]>([]);
-  const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null);
+  
+  // Team highlighting
+  const [highlightedTeam, setHighlightedTeam] = useState<string | null>(null);
 
   // Load reference seats on mount
   useEffect(() => {
     const loaded = loadReferenceSeats();
     setReferenceSeats(loaded);
-    
-    const savedLayouts = loadLayouts();
-    setLayouts(savedLayouts);
   }, []);
 
   // Generate unique reference seat ID
@@ -97,7 +98,7 @@ function App() {
     }
   };
 
-  // ADMIN: Import reference seats from JSON (optional)
+  // ADMIN: Import reference seats from JSON
   const handleImportReferenceSeats = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -119,76 +120,39 @@ function App() {
   // FACILITY USER FUNCTIONS
   // ============================================
 
-  // FACILITY_USER: Generate allocation based on strategy
-  const generateAllocation = (strategy: typeof AllocationStrategy[keyof typeof AllocationStrategy]) => {
+  // FACILITY_USER: Generate all allocation options
+  const handleGenerateOptions = () => {
     if (referenceSeats.length === 0) {
       alert('No reference seats available. Contact admin to set up seat map.');
       return;
     }
 
-    // Simple allocation logic (can be enhanced later)
-    const allocated: AllocatedSeat[] = referenceSeats.map((refSeat, index) => {
-      let seatType: typeof SeatStatus[keyof typeof SeatStatus];
-      
-      // Simple distribution based on strategy
-      if (strategy === AllocationStrategy.MAX_TEAM_COHESION) {
-        seatType = index % 10 === 0 ? SeatStatus.BUFFER : SeatStatus.ASSIGNABLE;
-      } else if (strategy === AllocationStrategy.MANAGER_PROXIMITY) {
-        seatType = index % 5 === 0 ? SeatStatus.RESERVED : SeatStatus.ASSIGNABLE;
-      } else {
-        seatType = index % 8 === 0 ? SeatStatus.BUFFER : SeatStatus.ASSIGNABLE;
-      }
-
-      return {
-        seat_ref_id: refSeat.seat_ref_id,
-        x: refSeat.x,
-        y: refSeat.y,
-        seat_type: seatType,
-      };
-    });
-
-    setAllocatedSeats(allocated);
-    console.log(`✅ Generated allocation with ${strategy}: ${allocated.length} seats`);
-  };
-
-  // FACILITY_USER: Apply selected strategy
-  const handleApplyStrategy = () => {
-    generateAllocation(selectedStrategy);
-  };
-
-  // FACILITY_USER: Approve and save layout
-  const handleApproveLayout = () => {
-    if (allocatedSeats.length === 0) {
-      alert('No allocation to approve. Generate a layout first.');
+    const totalSeatsNeeded = DUMMY_TEAMS.reduce((sum, team) => sum + team.team_size, 0);
+    if (totalSeatsNeeded > referenceSeats.length) {
+      alert(`⚠️ Not enough seats!\n\nTeams need: ${totalSeatsNeeded} seats\nAvailable: ${referenceSeats.length} seats`);
       return;
     }
 
-    const layout: LayoutScenario = {
-      scenario_id: `LAYOUT-${Date.now()}`,
-      name: `${selectedStrategy} - ${new Date().toLocaleDateString()}`,
-      strategy: selectedStrategy,
-      seats: allocatedSeats,
-      created_at: new Date().toISOString(),
-    };
-
-    try {
-      saveLayout(layout);
-      setLayouts(prev => [...prev.filter(l => l.scenario_id !== layout.scenario_id), layout]);
-      setCurrentLayoutId(layout.scenario_id);
-      alert(`✅ Layout approved and saved!\n\n${layout.name}`);
-    } catch (error) {
-      alert('Failed to save layout. Please try again.');
+    console.log(`🎲 Generating allocation options for ${DUMMY_TEAMS.length} teams...`);
+    const options = generateAllOptions(referenceSeats, DUMMY_TEAMS);
+    setAllocationOptions(options);
+    
+    // Auto-select first option
+    if (options.length > 0) {
+      setSelectedOptionId(options[0].option_id);
+      setAllocatedSeats(options[0].allocations);
     }
+
+    console.log(`✅ Generated ${options.length} allocation options`);
   };
 
-  // FACILITY_USER: Load saved layout
-  const handleLoadLayout = (layoutId: string) => {
-    const layout = layouts.find(l => l.scenario_id === layoutId);
-    if (layout) {
-      setAllocatedSeats(layout.seats);
-      setSelectedStrategy(layout.strategy);
-      setCurrentLayoutId(layoutId);
-      console.log(`✅ Loaded layout: ${layout.name}`);
+  // FACILITY_USER: Switch between options
+  const handleSelectOption = (optionId: string) => {
+    const option = allocationOptions.find(opt => opt.option_id === optionId);
+    if (option) {
+      setSelectedOptionId(optionId);
+      setAllocatedSeats(option.allocations);
+      console.log(`✅ Switched to Option ${optionId}: ${option.description}`);
     }
   };
 
@@ -199,6 +163,8 @@ function App() {
     assignable: allocatedSeats.filter(s => s.seat_type === SeatStatus.ASSIGNABLE).length,
     reserved: allocatedSeats.filter(s => s.seat_type === SeatStatus.RESERVED).length,
     buffer: allocatedSeats.filter(s => s.seat_type === SeatStatus.BUFFER).length,
+    teams: DUMMY_TEAMS.length,
+    totalTeamSize: DUMMY_TEAMS.reduce((sum, team) => sum + team.team_size, 0),
   };
 
   return (
@@ -239,6 +205,8 @@ function App() {
             onDirectClick={handleAdminClick}
             isReferenceMarkingMode={isReferenceMarkingMode}
             isReadOnly={currentRole === UserRole.FACILITY_USER}
+            getTeamColor={getTeamColor}
+            highlightedTeam={highlightedTeam}
           />
         </div>
 
@@ -250,17 +218,21 @@ function App() {
                 <span className="stat-label">Reference Seats</span>
                 <span className="stat-value">{stats.referenceSeats}</span>
               </div>
-              <div className="stat-item">
-                <span className="stat-label">Allocated Total</span>
-                <span className="stat-value">{stats.allocatedTotal}</span>
-              </div>
+              {currentRole === UserRole.FACILITY_USER && (
+                <>
+                  <div className="stat-item">
+                    <span className="stat-label">Teams</span>
+                    <span className="stat-value">{stats.teams}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Total Team Size</span>
+                    <span className="stat-value">{stats.totalTeamSize}</span>
+                  </div>
+                </>
+              )}
               <div className="stat-item">
                 <span className="stat-label">Assignable</span>
                 <span className="stat-value green">{stats.assignable}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Reserved</span>
-                <span className="stat-value orange">{stats.reserved}</span>
               </div>
               <div className="stat-item">
                 <span className="stat-label">Buffer</span>
@@ -324,60 +296,79 @@ function App() {
           {/* FACILITY USER VIEW */}
           {currentRole === UserRole.FACILITY_USER && (
             <>
+              {allocationOptions.length > 0 && (
+                <div className="panel">
+                  <h3>🎨 Team Legend</h3>
+                  <p className="hint">Hover over a team to highlight its seats on the floor plan</p>
+                  <div className="team-legend-list">
+                    {DUMMY_TEAMS.map(team => {
+                      const teamSeats = allocatedSeats.filter(s => s.assigned_team === team.team_id);
+                      const seatIds = teamSeats.map(s => s.seat_ref_id).join(', ');
+                      
+                      return (
+                        <div
+                          key={team.team_id}
+                          className={`team-legend-item ${highlightedTeam === team.team_id ? 'highlighted' : ''}`}
+                          onMouseEnter={() => setHighlightedTeam(team.team_id)}
+                          onMouseLeave={() => setHighlightedTeam(null)}
+                        >
+                          <div className="team-legend-header">
+                            <div 
+                              className="team-color-indicator" 
+                              style={{ backgroundColor: team.color }}
+                            />
+                            <div className="team-legend-info">
+                              <div className="team-legend-name">{team.team_name}</div>
+                              <div className="team-legend-meta">
+                                Manager: {team.manager} | {teamSeats.length} seats
+                              </div>
+                            </div>
+                          </div>
+                          {teamSeats.length > 0 && (
+                            <div className="team-legend-seats">
+                              Seats: {seatIds}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="panel">
-                <h3>🎯 Allocation Strategy</h3>
+                <h3>🎲 Generate Allocations</h3>
                 <p className="hint">
                   {referenceSeats.length === 0
                     ? '⚠️ No reference seats available. Contact admin.'
-                    : 'Choose a strategy to generate seat allocation'}
+                    : 'Generate 3 allocation options using different strategies'}
                 </p>
-                <select
-                  className="strategy-select"
-                  value={selectedStrategy}
-                  onChange={(e) => setSelectedStrategy(e.target.value as typeof AllocationStrategy[keyof typeof AllocationStrategy])}
-                  disabled={referenceSeats.length === 0}
-                >
-                  <option value={AllocationStrategy.MAX_TEAM_COHESION}>Max Team Cohesion</option>
-                  <option value={AllocationStrategy.MANAGER_PROXIMITY}>Manager Proximity</option>
-                  <option value={AllocationStrategy.SPACE_EFFICIENCY}>Space Efficiency</option>
-                </select>
                 <button
                   className="btn btn-primary"
-                  onClick={handleApplyStrategy}
+                  onClick={handleGenerateOptions}
                   disabled={referenceSeats.length === 0}
-                  style={{ marginTop: '12px' }}
                 >
-                  🎲 Generate Layout
+                  🎲 Generate Options
                 </button>
               </div>
 
-              <div className="panel">
-                <h3>✅ Approve Layout</h3>
-                <p className="hint">
-                  Review the generated layout and approve to save it.
-                </p>
-                <button
-                  className="btn btn-success"
-                  onClick={handleApproveLayout}
-                  disabled={allocatedSeats.length === 0}
-                >
-                  ✅ Approve & Save Layout
-                </button>
-              </div>
-
-              {layouts.length > 0 && (
+              {allocationOptions.length > 0 && (
                 <div className="panel">
-                  <h3>📋 Saved Layouts</h3>
-                  <p className="hint">Load previously saved layouts</p>
-                  <div className="layout-list">
-                    {layouts.map(layout => (
+                  <h3>📋 Allocation Options</h3>
+                  <p className="hint">Switch between different allocation strategies</p>
+                  <div className="option-list">
+                    {allocationOptions.map(option => (
                       <button
-                        key={layout.scenario_id}
-                        className={`layout-item ${currentLayoutId === layout.scenario_id ? 'active' : ''}`}
-                        onClick={() => handleLoadLayout(layout.scenario_id)}
+                        key={option.option_id}
+                        className={`option-item ${selectedOptionId === option.option_id ? 'active' : ''}`}
+                        onClick={() => handleSelectOption(option.option_id)}
                       >
-                        <div className="layout-name">{layout.name}</div>
-                        <div className="layout-meta">{layout.seats.length} seats</div>
+                        <div className="option-id">Option {option.option_id}</div>
+                        <div className="option-desc">{option.description}</div>
+                        <div className="option-stats">
+                          {option.allocations.filter(s => s.seat_type === SeatStatus.ASSIGNABLE).length} assigned, {' '}
+                          {option.allocations.filter(s => s.seat_type === SeatStatus.BUFFER).length} buffer
+                        </div>
                       </button>
                     ))}
                   </div>

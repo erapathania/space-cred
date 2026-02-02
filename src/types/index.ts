@@ -42,7 +42,15 @@ export interface AllocatedSeat {
   x: number;  // Raw image pixel coordinate (from reference)
   y: number;  // Raw image pixel coordinate (from reference)
   seat_type: SeatStatus;
-  assigned_to?: string;  // team / role (optional)
+  assigned_team?: string;  // team ID
+  assigned_manager?: string;  // manager name
+}
+
+// Allocation option (multiple strategies)
+export interface AllocationOption {
+  option_id: string;
+  description: string;
+  allocations: AllocatedSeat[];
 }
 
 // Layout scenario
