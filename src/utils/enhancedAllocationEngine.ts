@@ -24,6 +24,8 @@ import { getTeamsByDepartment } from './teamFormation';
  * Score a seat based on leader preferences (SOFT CONSTRAINTS)
  * Higher score = better match
  * Returns 0 if no preferences, positive score if preferences match
+ * 
+ * NEW: Uses actual seat attributes instead of coordinate heuristics
  */
 function scoreSeatForLeader(
   seat: ReferenceSeat,
@@ -33,43 +35,38 @@ function scoreSeatForLeader(
 ): number {
   let score = 0;
   const prefs = leader.preferences;
+  const attrs = seat.attributes || {};
   
   // No preferences = all seats equally good
   if (!prefs || Object.keys(prefs).length === 0) {
     return 0;
   }
   
-  // Get seat's table
-  const seatTable = tables.find(t => t.table_id === seat.table_id);
-  if (!seatTable) return score;
+  // Match preferences with seat attributes
+  // Each matched attribute adds 10 points
   
-  // Near window: Prefer seats on edges (simplified heuristic)
-  if (prefs.near_window) {
-    const isEdge = seat.x < 200 || seat.x > 1800 || seat.y < 200 || seat.y > 1200;
-    if (isEdge) score += 10;
+  if (prefs.near_window && attrs.near_window) {
+    score += 10;
   }
   
-  // Near entry: Prefer seats in top-left quadrant (simplified)
-  if (prefs.near_entry) {
-    if (seat.x < 1000 && seat.y < 700) score += 10;
+  if (prefs.near_entry && attrs.near_entry) {
+    score += 10;
   }
   
-  // Quiet zone: Prefer seats away from center
-  if (prefs.quiet_zone) {
-    const distFromCenter = Math.abs(seat.x - 1000) + Math.abs(seat.y - 700);
-    if (distFromCenter > 800) score += 10;
+  if (prefs.quiet_zone && attrs.quiet_zone) {
+    score += 10;
   }
   
-  // Corner/edge table: Prefer tables at corners
-  if (prefs.corner_edge) {
-    const isCornerTable = 
-      (seatTable.x < 300 || seatTable.x > 1700) &&
-      (seatTable.y < 300 || seatTable.y > 1100);
-    if (isCornerTable) score += 10;
+  if (prefs.corner_edge && attrs.corner_position) {
+    score += 10;
   }
   
-  // Legacy preferences
-  if (prefs.premium_seat) score += 5;
+  if (prefs.premium_seat && attrs.premium) {
+    score += 5;
+  }
+  
+  // Note: near_team preference requires distance calculation to team tables
+  // This is a future enhancement
   
   return score;
 }

@@ -8,7 +8,8 @@
 import { useState, useEffect } from 'react';
 import { FloorPlanViewer } from './components/FloorPlanViewer';
 import { LeaderPreferenceModal } from './components/LeaderPreferenceModal';
-import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat, Leader, LeaderPreferences } from './types';
+import { SeatAttributeModal } from './components/SeatAttributeModal';
+import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat, Leader, LeaderPreferences, SeatAttributes } from './types';
 import { UserRole, SeatStatus } from './types';
 import { saveReferenceSeats, loadReferenceSeats, saveTables, loadTables } from './utils/storage';
 import { mapSeatsToTables } from './utils/tableMapping';
@@ -49,6 +50,9 @@ function App() {
   // Leader preference management
   const [selectedLeader, setSelectedLeader] = useState<Leader | null>(null);
   const [leaderPreferences, setLeaderPreferences] = useState<Map<string, LeaderPreferences>>(new Map());
+  
+  // Seat attribute management (ADMIN)
+  const [selectedSeatForAttributes, setSelectedSeatForAttributes] = useState<ReferenceSeat | null>(null);
 
   // Load reference seats and tables on mount
   useEffect(() => {
@@ -283,6 +287,25 @@ function App() {
     }
   };
 
+  // ADMIN: Handle seat attribute save
+  const handleSaveSeatAttributes = (seatId: string, attributes: SeatAttributes) => {
+    setReferenceSeats(prev => 
+      prev.map(seat => 
+        seat.seat_ref_id === seatId 
+          ? { ...seat, attributes }
+          : seat
+      )
+    );
+    console.log(`✅ Updated attributes for ${seatId}:`, attributes);
+  };
+
+  // ADMIN: Handle seat right-click to open attribute modal
+  const handleSeatRightClick = (seat: ReferenceSeat) => {
+    if (currentRole === UserRole.ADMIN) {
+      setSelectedSeatForAttributes(seat);
+    }
+  };
+
   // Helper function to get team color
   const getTeamColor = (teamId: string | undefined): string => {
     if (!teamId) return '#CCCCCC';
@@ -400,6 +423,9 @@ function App() {
                 >
                   {isReferenceMarkingMode ? '✓ Marking Seats' : 'Mark Seats'}
                 </button>
+                <p className="hint" style={{ marginTop: '12px', fontSize: '12px' }}>
+                  💡 <strong>Tip:</strong> Right-click on any seat to set attributes (window, door, corner, etc.)
+                </p>
               </div>
 
               <div className="panel">
@@ -610,6 +636,15 @@ function App() {
           leader={selectedLeader}
           onSave={handleSaveLeaderPreference}
           onClose={() => setSelectedLeader(null)}
+        />
+      )}
+
+      {/* Seat Attribute Modal (ADMIN) */}
+      {selectedSeatForAttributes && (
+        <SeatAttributeModal
+          seat={selectedSeatForAttributes}
+          onSave={handleSaveSeatAttributes}
+          onClose={() => setSelectedSeatForAttributes(null)}
         />
       )}
     </div>

@@ -39,12 +39,23 @@ export interface Table {
   capacity: number;  // Max seats this table can hold
 }
 
+// Seat attributes (for preference matching)
+export interface SeatAttributes {
+  near_window?: boolean;      // Seat is near a window
+  near_entry?: boolean;        // Seat is near entry/exit door
+  corner_position?: boolean;   // Seat is in a corner
+  quiet_zone?: boolean;        // Seat is in a quiet area
+  accessible?: boolean;        // Seat is accessible (for special needs)
+  premium?: boolean;           // Premium seat (legacy)
+}
+
 // Reference seat (red dot) - ADMIN creates, FACILITY_USER views
 export interface ReferenceSeat {
   seat_ref_id: string;
   x: number;  // Raw image pixel coordinate
   y: number;  // Raw image pixel coordinate
   table_id?: string;  // Assigned table (computed after table mapping)
+  attributes?: SeatAttributes;  // Seat attributes for preference matching
 }
 
 // Allocated seat (green/orange/gray) - computed by allocation logic

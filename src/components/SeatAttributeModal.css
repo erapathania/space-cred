@@ -1,0 +1,117 @@
+/**
+ * Seat Attribute Modal Styles
+ * Reuses modal styles from LeaderPreferenceModal
+ */
+
+/* Import shared modal styles if needed, or duplicate for independence */
+
+.seat-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.seat-info strong {
+  font-size: 16px;
+  color: #333;
+  font-family: 'Courier New', monospace;
+}
+
+.seat-coords {
+  padding: 4px 8px;
+  background: #e3f2fd;
+  color: #1976d2;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+}
+
+.seat-table {
+  padding: 4px 8px;
+  background: #fff3e0;
+  color: #f57c00;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+}
+
+.attribute-note {
+  margin: 16px 0;
+  padding: 12px;
+  background: #e8f5e9;
+  border-left: 4px solid #4caf50;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.attribute-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.attribute-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.attribute-item:hover {
+  border-color: #4caf50;
+  background: #f1f8f4;
+}
+
+.attribute-item input[type="checkbox"] {
+  margin-top: 4px;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #4caf50;
+}
+
+.attribute-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+}
+
+.attribute-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.attribute-title {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.attribute-desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+}
+
+.attribute-summary {
+  padding: 12px;
+  background: #e8f5e9;
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 600;
+  color: #2e7d32;
+  font-size: 14px;
+}
