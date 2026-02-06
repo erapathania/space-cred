@@ -82,3 +82,94 @@ export const SEAT_COLORS: Record<SeatStatus, string> = {
 
 export const REFERENCE_SEAT_COLOR = '#FF0000';  // Red (reference dots)
 export const SELECTED_HIGHLIGHT_COLOR = '#2196F3';  // Blue (when selected)
+
+// ============================================================================
+// PHASE 1: Enhanced Allocation System Types
+// ============================================================================
+
+// Employee roles
+export const EmployeeRole = {
+  LEADER: 'LEADER',
+  MANAGER: 'MANAGER',
+  SUB_MANAGER: 'SUB_MANAGER',
+  EMPLOYEE: 'EMPLOYEE',
+} as const;
+
+export type EmployeeRole = typeof EmployeeRole[keyof typeof EmployeeRole];
+
+// Gender
+export type Gender = 'M' | 'F';
+
+// Leader preferences
+export interface LeaderPreferences {
+  near_window?: boolean;
+  premium_seat?: boolean;
+  near_managers?: boolean;
+}
+
+// Leader (top of hierarchy)
+export interface Leader {
+  leader_id: string;
+  name: string;
+  department: string;
+  preferences: LeaderPreferences;
+  color: string;  // Department color
+}
+
+// Manager (reports to leader)
+export interface Manager {
+  manager_id: string;
+  name: string;
+  leader_id: string;
+  department: string;
+  team_size: number;  // Including self + direct reports
+}
+
+// Sub-Manager (optional, reports to manager)
+export interface SubManager {
+  sub_manager_id: string;
+  name: string;
+  manager_id: string;
+  department: string;
+  team_size: number;  // Including self + direct reports
+}
+
+// Employee (reports to sub-manager OR manager)
+export interface Employee {
+  employee_id: string;
+  name: string;
+  gender: Gender;
+  reports_to: string;  // sub_manager_id OR manager_id
+  department: string;
+  special_needs: boolean;
+  role: EmployeeRole;  // For display purposes
+}
+
+// Enhanced Team (formed from hierarchy) - for new allocation system
+export interface EnhancedTeam {
+  team_id: string;
+  team_name: string;
+  leader_id: string;
+  manager_id?: string;
+  sub_manager_id?: string;
+  members: Employee[];
+  department: string;
+  color: string;
+}
+
+// Enhanced reference seat (with additional attributes)
+export interface EnhancedReferenceSeat extends ReferenceSeat {
+  is_premium?: boolean;
+  is_window_side?: boolean;
+  is_accessible?: boolean;  // For special needs
+}
+
+// Enhanced allocated seat (with employee details)
+export interface EnhancedAllocatedSeat extends AllocatedSeat {
+  employee_id?: string;
+  employee_name?: string;
+  employee_role?: EmployeeRole;
+  employee_gender?: Gender;
+  department?: string;
+  table_id?: string;
+}
