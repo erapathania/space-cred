@@ -7,12 +7,13 @@
 
 import { useState, useEffect } from 'react';
 import { FloorPlanViewer } from './components/FloorPlanViewer';
-import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table } from './types';
+import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat } from './types';
 import { UserRole, SeatStatus } from './types';
 import { saveReferenceSeats, loadReferenceSeats, saveTables, loadTables } from './utils/storage';
-import { generateTableBasedOptions } from './utils/tableAllocationEngine';
 import { mapSeatsToTables } from './utils/tableMapping';
-import { DUMMY_TEAMS, getTeamColor } from './data/teams';
+import { generateManagers, generateSubManagers, generateEmployees } from './data/organizationData';
+import { formTeams } from './utils/teamFormation';
+import { allocateWithLeaders } from './utils/enhancedAllocationEngine';
 import './App.css';
 
 function App() {
@@ -37,6 +38,9 @@ function App() {
   
   // Team highlighting
   const [highlightedTeam, setHighlightedTeam] = useState<string | null>(null);
+  
+  // Generated teams (for legend display)
+  const [generatedTeams, setGeneratedTeams] = useState<any[]>([]);
 
   // Load reference seats and tables on mount
   useEffect(() => {
@@ -179,7 +183,7 @@ function App() {
   // FACILITY USER FUNCTIONS
   // ============================================
 
-  // FACILITY_USER: Generate table-based allocation
+  // FACILITY_USER: Generate enhanced allocation with hierarchy
   const handleGenerateOptions = () => {
     if (referenceSeats.length === 0) {
       alert('No reference seats available. Contact admin to set up seat map.');
@@ -191,20 +195,46 @@ function App() {
       return;
     }
 
-    const totalSeatsNeeded = DUMMY_TEAMS.reduce((sum, team) => sum + team.team_size, 0);
-    if (totalSeatsNeeded > referenceSeats.length) {
-      alert(`⚠️ Not enough seats!\n\nTeams need: ${totalSeatsNeeded} seats\nAvailable: ${referenceSeats.length} seats`);
-      return;
-    }
-
-    console.log(`🏢 Generating TABLE-BASED allocation for ${DUMMY_TEAMS.length} teams...`);
+    console.log(`🏢 Generating ENHANCED allocation with organizational hierarchy...`);
+    
+    // Generate organization data
+    const managers = generateManagers();
+    const subManagers = generateSubManagers(managers);
+    const employees = generateEmployees(managers, subManagers);
+    
+    // Form teams from hierarchy
+    const teams = formTeams(managers, subManagers, employees);
+    
+    // Store teams for legend display
+    setGeneratedTeams(teams);
+    
+    console.log(`📊 Generated: ${managers.length} managers, ${subManagers.length} sub-managers, ${employees.length} employees`);
+    console.log(`👥 Formed: ${teams.length} teams`);
     
     // Map seats to tables if not already mapped
     const mappedSeats = referenceSeats.every(s => s.table_id)
       ? referenceSeats
       : mapSeatsToTables(referenceSeats, tables);
     
-    const options = generateTableBasedOptions(mappedSeats, tables, DUMMY_TEAMS);
+    // Run enhanced allocation
+    const enhancedAllocations = allocateWithLeaders(mappedSeats, tables, teams);
+    
+    // Convert to AllocatedSeat format for compatibility
+    const allocations: AllocatedSeat[] = enhancedAllocations.map(seat => ({
+      seat_ref_id: seat.seat_ref_id,
+      x: seat.x,
+      y: seat.y,
+      seat_type: seat.seat_type,
+      assigned_team: seat.assigned_team,
+      assigned_manager: seat.assigned_manager,
+    }));
+    
+    const options: AllocationOption[] = [{
+      option_id: 'ENHANCED',
+      description: 'Leader-First Allocation (Hierarchy-based, Teams sit together)',
+      allocations,
+    }];
+    
     setAllocationOptions(options);
     
     // Auto-select first option
@@ -213,7 +243,7 @@ function App() {
       setAllocatedSeats(options[0].allocations);
     }
 
-    console.log(`✅ Generated ${options.length} allocation option(s)`);
+    console.log(`✅ Generated enhanced allocation with ${allocations.length} seats`);
   };
 
   // FACILITY_USER: Switch between options
@@ -226,14 +256,21 @@ function App() {
     }
   };
 
+  // Helper function to get team color
+  const getTeamColor = (teamId: string | undefined): string => {
+    if (!teamId) return '#CCCCCC';
+    const team = generatedTeams.find(t => t.team_id === teamId);
+    return team?.color || '#CCCCCC';
+  };
+
   // Statistics
   const stats = {
     referenceSeats: referenceSeats.length,
     tables: tables.length,
     allocatedTotal: allocatedSeats.length,
     assignable: allocatedSeats.filter(s => s.seat_type === SeatStatus.ASSIGNABLE).length,
-    teams: DUMMY_TEAMS.length,
-    totalTeamSize: DUMMY_TEAMS.reduce((sum, team) => sum + team.team_size, 0),
+    teams: generatedTeams.length,
+    totalTeamSize: generatedTeams.reduce((sum: number, team: any) => sum + team.members.length, 0),
   };
 
   return (
@@ -421,14 +458,14 @@ function App() {
                 </button>
               </div>
 
-              {allocationOptions.length > 0 && (
+              {allocationOptions.length > 0 && generatedTeams.length > 0 && (
                 <div className="panel">
                   <h3>🎨 Team Legend</h3>
-                  <p className="hint">Hover to highlight team seats</p>
+                  <p className="hint">Hover to highlight team seats (showing first 20 teams)</p>
                   <div className="team-legend-list">
-                    {DUMMY_TEAMS.map(team => {
+                    {generatedTeams.slice(0, 20).map((team: any) => {
                       const teamSeats = allocatedSeats.filter(s => s.assigned_team === team.team_id);
-                      const seatIds = teamSeats.map(s => s.seat_ref_id).join(', ');
+                      const seatIds = teamSeats.map(s => s.seat_ref_id).slice(0, 5).join(', ');
                       
                       return (
                         <div
@@ -445,18 +482,23 @@ function App() {
                             <div className="team-legend-info">
                               <div className="team-legend-name">{team.team_name}</div>
                               <div className="team-legend-meta">
-                                {team.department} | {team.manager} | {teamSeats.length} seats
+                                {team.department} | {team.members.length} members | {teamSeats.length} seats
                               </div>
                             </div>
                           </div>
                           {teamSeats.length > 0 && (
                             <div className="team-legend-seats">
-                              {seatIds}
+                              {seatIds}{teamSeats.length > 5 ? '...' : ''}
                             </div>
                           )}
                         </div>
                       );
                     })}
+                    {generatedTeams.length > 20 && (
+                      <div className="team-legend-more">
+                        + {generatedTeams.length - 20} more teams
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
