@@ -7,11 +7,12 @@
 
 import { useState, useEffect } from 'react';
 import { FloorPlanViewer } from './components/FloorPlanViewer';
-import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat } from './types';
+import { LeaderPreferenceModal } from './components/LeaderPreferenceModal';
+import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat, Leader, LeaderPreferences } from './types';
 import { UserRole, SeatStatus } from './types';
 import { saveReferenceSeats, loadReferenceSeats, saveTables, loadTables } from './utils/storage';
 import { mapSeatsToTables } from './utils/tableMapping';
-import { generateManagers, generateSubManagers, generateEmployees } from './data/organizationData';
+import { generateManagers, generateSubManagers, generateEmployees, LEADERS } from './data/organizationData';
 import { formTeams } from './utils/teamFormation';
 import { allocateWithLeaders } from './utils/enhancedAllocationEngine';
 import './App.css';
@@ -44,6 +45,10 @@ function App() {
   
   // Generated teams (for legend display)
   const [generatedTeams, setGeneratedTeams] = useState<any[]>([]);
+  
+  // Leader preference management
+  const [selectedLeader, setSelectedLeader] = useState<Leader | null>(null);
+  const [leaderPreferences, setLeaderPreferences] = useState<Map<string, LeaderPreferences>>(new Map());
 
   // Load reference seats and tables on mount
   useEffect(() => {
@@ -262,6 +267,22 @@ function App() {
     }
   };
 
+  // FACILITY_USER: Handle leader preference save
+  const handleSaveLeaderPreference = (leaderId: string, preferences: LeaderPreferences) => {
+    setLeaderPreferences(prev => {
+      const updated = new Map(prev);
+      updated.set(leaderId, preferences);
+      return updated;
+    });
+    
+    // Update the leader in LEADERS array (in-memory only for this session)
+    const leader = LEADERS.find(l => l.leader_id === leaderId);
+    if (leader) {
+      leader.preferences = preferences;
+      console.log(`✅ Updated preferences for ${leader.name}:`, preferences);
+    }
+  };
+
   // Helper function to get team color
   const getTeamColor = (teamId: string | undefined): string => {
     if (!teamId) return '#CCCCCC';
@@ -455,6 +476,31 @@ function App() {
           {currentRole === UserRole.FACILITY_USER && (
             <>
               <div className="panel">
+                <h3>⭐ Leader Preferences</h3>
+                <p className="hint">Set seat preferences for leaders (soft constraints)</p>
+                <div className="leader-preference-list">
+                  {LEADERS.slice(0, 5).map(leader => (
+                    <button
+                      key={leader.leader_id}
+                      className="leader-preference-btn"
+                      onClick={() => setSelectedLeader(leader)}
+                    >
+                      <span className="leader-name">{leader.name}</span>
+                      <span className="leader-dept-badge">{leader.department}</span>
+                      {Object.keys(leader.preferences).length > 0 && (
+                        <span className="leader-has-prefs">✓</span>
+                      )}
+                    </button>
+                  ))}
+                  {LEADERS.length > 5 && (
+                    <div className="leader-more-hint">
+                      + {LEADERS.length - 5} more leaders (click to expand)
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="panel">
                 <h3>🔍 Debug Mode</h3>
                 <p className="hint">Show table boundaries</p>
                 <button
@@ -557,6 +603,15 @@ function App() {
       <footer className="app-footer">
         <p>Space Allocation System V1 | Role: {currentRole} | Table-First Architecture</p>
       </footer>
+
+      {/* Leader Preference Modal */}
+      {selectedLeader && (
+        <LeaderPreferenceModal
+          leader={selectedLeader}
+          onSave={handleSaveLeaderPreference}
+          onClose={() => setSelectedLeader(null)}
+        />
+      )}
     </div>
   );
 }

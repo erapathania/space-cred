@@ -100,11 +100,15 @@ export type EmployeeRole = typeof EmployeeRole[keyof typeof EmployeeRole];
 // Gender
 export type Gender = 'M' | 'F';
 
-// Leader preferences
+// Leader preferences (SOFT CONSTRAINTS - allocation tries to satisfy but doesn't guarantee)
 export interface LeaderPreferences {
-  near_window?: boolean;
-  premium_seat?: boolean;
-  near_managers?: boolean;
+  near_window?: boolean;        // Prefer seats near windows
+  near_entry?: boolean;          // Prefer seats near entry/exit
+  near_team?: boolean;           // Prefer to sit close to team table
+  quiet_zone?: boolean;          // Prefer quieter areas
+  corner_edge?: boolean;         // Prefer corner or edge tables
+  premium_seat?: boolean;        // Legacy - prefer premium seats
+  near_managers?: boolean;       // Legacy - prefer to be near other managers
 }
 
 // Leader (top of hierarchy)

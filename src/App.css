@@ -541,6 +541,79 @@ body {
   background: #FFD700;
 }
 
+/* Leader preference list */
+.leader-preference-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.leader-preference-btn {
+  width: 100%;
+  padding: 12px;
+  background: #2a2a2a;
+  border: 2px solid #3a3a3a;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.leader-preference-btn:hover {
+  background: #3a3a3a;
+  border-color: #FFD700;
+}
+
+.leader-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.leader-dept-badge {
+  padding: 4px 8px;
+  background: rgba(33, 150, 243, 0.2);
+  color: #64B5F6;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.leader-has-prefs {
+  width: 20px;
+  height: 20px;
+  background: #4CAF50;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.leader-more-hint {
+  padding: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+}
+
+.team-legend-more {
+  padding: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+  background: #2a2a2a;
+  border-radius: 6px;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .sidebar {

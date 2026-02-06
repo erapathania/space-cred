@@ -2,22 +2,77 @@
  * Enhanced Allocation Engine
  * 
  * ALLOCATION PRIORITY:
- * 1. Leaders (with preferences: premium, window)
+ * 1. Leaders (with SOFT CONSTRAINT preferences)
  * 2. Teams (ONE TEAM → ONE TABLE, table-first)
  * 3. Special needs employees (accessible seats)
  * 
  * RULES:
- * - Leaders allocated FIRST
+ * - Leaders allocated FIRST with preference scoring
+ * - Preferences are SOFT - never break team/table integrity
  * - Teams sit together on same table
  * - Department zones maintained
  * - Gender and role tracked for UI
  */
 
-import type { ReferenceSeat, EnhancedAllocatedSeat, Table, EnhancedTeam, Leader, Employee } from '../types';
+import type { ReferenceSeat, EnhancedAllocatedSeat, Table, EnhancedTeam, Leader, Employee, LeaderPreferences } from '../types';
 import { SeatStatus } from '../types';
 import { getSeatsForTable } from './tableMapping';
 import { LEADERS, DEPARTMENTS } from '../data/organizationData';
 import { getTeamsByDepartment } from './teamFormation';
+
+/**
+ * Score a seat based on leader preferences (SOFT CONSTRAINTS)
+ * Higher score = better match
+ * Returns 0 if no preferences, positive score if preferences match
+ */
+function scoreSeatForLeader(
+  seat: ReferenceSeat,
+  leader: Leader,
+  seats: ReferenceSeat[],
+  tables: Table[]
+): number {
+  let score = 0;
+  const prefs = leader.preferences;
+  
+  // No preferences = all seats equally good
+  if (!prefs || Object.keys(prefs).length === 0) {
+    return 0;
+  }
+  
+  // Get seat's table
+  const seatTable = tables.find(t => t.table_id === seat.table_id);
+  if (!seatTable) return score;
+  
+  // Near window: Prefer seats on edges (simplified heuristic)
+  if (prefs.near_window) {
+    const isEdge = seat.x < 200 || seat.x > 1800 || seat.y < 200 || seat.y > 1200;
+    if (isEdge) score += 10;
+  }
+  
+  // Near entry: Prefer seats in top-left quadrant (simplified)
+  if (prefs.near_entry) {
+    if (seat.x < 1000 && seat.y < 700) score += 10;
+  }
+  
+  // Quiet zone: Prefer seats away from center
+  if (prefs.quiet_zone) {
+    const distFromCenter = Math.abs(seat.x - 1000) + Math.abs(seat.y - 700);
+    if (distFromCenter > 800) score += 10;
+  }
+  
+  // Corner/edge table: Prefer tables at corners
+  if (prefs.corner_edge) {
+    const isCornerTable = 
+      (seatTable.x < 300 || seatTable.x > 1700) &&
+      (seatTable.y < 300 || seatTable.y > 1100);
+    if (isCornerTable) score += 10;
+  }
+  
+  // Legacy preferences
+  if (prefs.premium_seat) score += 5;
+  
+  return score;
+}
 
 /**
  * Main allocation function with leader-first approach
@@ -35,41 +90,53 @@ export function allocateWithLeaders(
   console.log(`\n🚀 Starting Enhanced Allocation`);
   console.log(`📊 Total: ${seats.length} seats, ${tables.length} tables, ${LEADERS.length} leaders, ${teams.length} teams`);
   
-  // PHASE 1: Allocate Leaders First (with preferences)
-  console.log(`\n👑 PHASE 1: Allocating ${LEADERS.length} Leaders`);
+  // PHASE 1: Allocate Leaders First (with SOFT CONSTRAINT preferences)
+  console.log(`\n👑 PHASE 1: Allocating ${LEADERS.length} Leaders (with preference scoring)`);
   
   LEADERS.forEach(leader => {
-    // Find suitable seat for leader based on preferences
-    let leaderSeat: ReferenceSeat | null = null;
+    // Get all available seats
+    const availableSeats = seats.filter(s => !usedSeats.has(s.seat_ref_id));
     
-    // Try to find seat matching preferences
-    if (leader.preferences.premium_seat) {
-      leaderSeat = seats.find(s => !usedSeats.has(s.seat_ref_id)) || null;
-    } else if (leader.preferences.near_window) {
-      leaderSeat = seats.find(s => !usedSeats.has(s.seat_ref_id)) || null;
-    } else {
-      leaderSeat = seats.find(s => !usedSeats.has(s.seat_ref_id)) || null;
+    if (availableSeats.length === 0) {
+      console.warn(`  ⚠️ No seats available for ${leader.name}`);
+      return;
     }
     
-    if (leaderSeat) {
-      allocatedSeats.push({
-        seat_ref_id: leaderSeat.seat_ref_id,
-        x: leaderSeat.x,
-        y: leaderSeat.y,
-        seat_type: SeatStatus.ASSIGNABLE,
-        employee_id: leader.leader_id,
-        employee_name: leader.name,
-        employee_role: 'LEADER',
-        employee_gender: 'M', // Default
-        department: leader.department,
-        table_id: leaderSeat.table_id,
-        assigned_team: `LEADER_${leader.leader_id}`,
-        assigned_manager: leader.name,
-      });
-      
-      usedSeats.add(leaderSeat.seat_ref_id);
-      console.log(`  ⭐ ${leader.name} (${leader.department}) → Seat ${leaderSeat.seat_ref_id}`);
-    }
+    // Score each seat based on leader preferences
+    const scoredSeats = availableSeats.map(seat => ({
+      seat,
+      score: scoreSeatForLeader(seat, leader, seats, tables),
+    }));
+    
+    // Sort by score (highest first), then by seat_ref_id for consistency
+    scoredSeats.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.seat.seat_ref_id.localeCompare(b.seat.seat_ref_id);
+    });
+    
+    // Pick the best seat
+    const leaderSeat = scoredSeats[0].seat;
+    const preferenceScore = scoredSeats[0].score;
+    
+    allocatedSeats.push({
+      seat_ref_id: leaderSeat.seat_ref_id,
+      x: leaderSeat.x,
+      y: leaderSeat.y,
+      seat_type: SeatStatus.ASSIGNABLE,
+      employee_id: leader.leader_id,
+      employee_name: leader.name,
+      employee_role: 'LEADER',
+      employee_gender: 'M', // Default
+      department: leader.department,
+      table_id: leaderSeat.table_id,
+      assigned_team: `LEADER_${leader.leader_id}`,
+      assigned_manager: leader.name,
+    });
+    
+    usedSeats.add(leaderSeat.seat_ref_id);
+    
+    const prefStatus = preferenceScore > 0 ? `✓ (score: ${preferenceScore})` : '(no prefs)';
+    console.log(`  ⭐ ${leader.name} (${leader.department}) → Seat ${leaderSeat.seat_ref_id} ${prefStatus}`);
   });
   
   // PHASE 2: Allocate Teams (table-first, sorted by size)
