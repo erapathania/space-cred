@@ -6,18 +6,19 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import type { ReferenceSeat, AllocatedSeat, Table } from '../types';
+import type { ReferenceSeat, AllocatedSeat, Table, EnhancedAllocatedSeat } from '../types';
 import { SEAT_COLORS, REFERENCE_SEAT_COLOR } from '../types';
 import './FloorPlanViewer.css';
 
 // Rendering constants
 const REF_SEAT_RADIUS = 12;
-const ALLOC_SEAT_SIZE = 24;
+const ALLOC_SEAT_SIZE = 32; // Increased from 24 to 32 (33% larger)
 
 interface FloorPlanViewerProps {
   imagePath: string;
   referenceSeats: ReferenceSeat[];
   allocatedSeats: AllocatedSeat[];
+  enhancedSeats?: EnhancedAllocatedSeat[]; // NEW: Enhanced seat data with employee info
   tables: Table[];
   onDirectClick?: (x: number, y: number) => void;
   onTableDrawn?: (table: Omit<Table, 'table_id'>) => void;
@@ -47,6 +48,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   imagePath,
   referenceSeats,
   allocatedSeats,
+  enhancedSeats = [],
   tables,
   onDirectClick,
   onTableDrawn,
@@ -358,7 +360,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             />
           ))}
 
-          {/* Allocated seats (COLORED SQUARES WITH LABELS) */}
+          {/* Allocated seats (COLORED WITH GENDER ICONS & ROLE BADGES) */}
           {allocatedSeats.map((seat) => {
             const teamSeats = seat.assigned_team ? seatsByTeam.get(seat.assigned_team) || [] : [];
             const seatNumber = teamSeats.indexOf(seat) + 1;
@@ -369,8 +371,27 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             const isHighlighted = highlightedTeam === seat.assigned_team;
             const isFaded = highlightedTeam && highlightedTeam !== seat.assigned_team;
             
+            // Get enhanced data for this seat
+            const enhancedSeat = enhancedSeats.find(e => e.seat_ref_id === seat.seat_ref_id);
+            const genderIcon = enhancedSeat?.employee_gender === 'F' ? '👩' : '👨';
+            const isLeader = enhancedSeat?.employee_role === 'LEADER';
+            
             return (
               <g key={`alloc-${seat.seat_ref_id}`}>
+                {/* Leader star badge (behind seat) */}
+                {isLeader && (
+                  <circle
+                    cx={seat.x}
+                    cy={seat.y}
+                    r={ALLOC_SEAT_SIZE / 2 + 4}
+                    fill="none"
+                    stroke="#FFD700"
+                    strokeWidth={3}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                
+                {/* Seat rectangle */}
                 <rect
                   x={seat.x - ALLOC_SEAT_SIZE / 2}
                   y={seat.y - ALLOC_SEAT_SIZE / 2}
@@ -380,23 +401,35 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   fillOpacity={isFaded ? 0.3 : 1}
                   stroke={isHighlighted ? '#FFD700' : 'white'}
                   strokeWidth={isHighlighted ? 3 : 2}
-                  rx={2}
+                  rx={4}
                   onMouseEnter={() => setHoveredSeat(seat)}
                   onMouseLeave={() => setHoveredSeat(null)}
                   style={{ pointerEvents: 'all', cursor: 'pointer' }}
                 />
                 
-                {seat.assigned_team && (
+                {/* Gender icon */}
+                {enhancedSeat && (
                   <text
                     x={seat.x}
-                    y={seat.y + 4}
+                    y={seat.y + 6}
                     textAnchor="middle"
-                    fill="white"
-                    fontSize="12"
-                    fontWeight="bold"
+                    fontSize="18"
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    {seatNumber}
+                    {genderIcon}
+                  </text>
+                )}
+                
+                {/* Leader star icon (on top) */}
+                {isLeader && (
+                  <text
+                    x={seat.x + ALLOC_SEAT_SIZE / 2 - 6}
+                    y={seat.y - ALLOC_SEAT_SIZE / 2 + 10}
+                    textAnchor="middle"
+                    fontSize="14"
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
+                  >
+                    ⭐
                   </text>
                 )}
               </g>
@@ -405,17 +438,35 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
         </svg>
       </div>
 
-      {/* Hover tooltip */}
+      {/* Hover tooltip with enhanced info */}
       {hoveredSeat && (
         <div className="info-panel">
-          <div><strong>Seat:</strong> {hoveredSeat.seat_ref_id}</div>
-          <div><strong>Type:</strong> {hoveredSeat.seat_type}</div>
-          {hoveredSeat.assigned_team && (
-            <>
-              <div><strong>Team:</strong> {hoveredSeat.assigned_team}</div>
-              <div><strong>Manager:</strong> {hoveredSeat.assigned_manager}</div>
-            </>
-          )}
+          {(() => {
+            const enhancedSeat = enhancedSeats.find(e => e.seat_ref_id === hoveredSeat.seat_ref_id);
+            return (
+              <>
+                <div><strong>Seat:</strong> {hoveredSeat.seat_ref_id}</div>
+                {enhancedSeat && (
+                  <>
+                    <div><strong>Name:</strong> {enhancedSeat.employee_name}</div>
+                    <div><strong>Role:</strong> {enhancedSeat.employee_role}</div>
+                    <div><strong>Gender:</strong> {enhancedSeat.employee_gender === 'M' ? 'Male' : 'Female'}</div>
+                    <div><strong>Department:</strong> {enhancedSeat.department}</div>
+                  </>
+                )}
+                <div><strong>Type:</strong> {hoveredSeat.seat_type}</div>
+                {hoveredSeat.assigned_team && (
+                  <>
+                    <div><strong>Team:</strong> {hoveredSeat.assigned_team}</div>
+                    <div><strong>Manager:</strong> {hoveredSeat.assigned_manager}</div>
+                    {enhancedSeat?.table_id && (
+                      <div><strong>Table:</strong> {enhancedSeat.table_id}</div>
+                    )}
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 

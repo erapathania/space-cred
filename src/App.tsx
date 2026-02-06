@@ -36,6 +36,9 @@ function App() {
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [allocatedSeats, setAllocatedSeats] = useState<AllocatedSeat[]>([]);
   
+  // Enhanced allocated seats (with employee data for UI)
+  const [enhancedSeats, setEnhancedSeats] = useState<EnhancedAllocatedSeat[]>([]);
+  
   // Team highlighting
   const [highlightedTeam, setHighlightedTeam] = useState<string | null>(null);
   
@@ -219,6 +222,9 @@ function App() {
     // Run enhanced allocation
     const enhancedAllocations = allocateWithLeaders(mappedSeats, tables, teams);
     
+    // Store enhanced seats for UI display
+    setEnhancedSeats(enhancedAllocations);
+    
     // Convert to AllocatedSeat format for compatibility
     const allocations: AllocatedSeat[] = enhancedAllocations.map(seat => ({
       seat_ref_id: seat.seat_ref_id,
@@ -310,6 +316,7 @@ function App() {
             imagePath="/assets/floor-plan.jpg"
             referenceSeats={referenceSeats}
             allocatedSeats={allocatedSeats}
+            enhancedSeats={enhancedSeats}
             tables={tables}
             onDirectClick={handleAdminClick}
             onTableDrawn={handleTableDrawn}
