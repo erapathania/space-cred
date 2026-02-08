@@ -1,17 +1,16 @@
 /**
  * Team Formation Logic
  * Converts organizational hierarchy into teams for allocation
- * 
+ *
  * TEAM DEFINITION:
- * - If sub-manager exists: Team = Sub-manager + direct reports
- * - Else: Team = Manager + direct reports
+ * - Team = Leader + Manager/Sub-manager + direct reports
+ * - Leader is included as first member for accurate team counting
  */
 
-import type { EnhancedTeam, Leader, Manager, SubManager, Employee } from '../types';
+import type { EnhancedTeam, Manager, SubManager, Employee } from '../types';
 import {
   LEADERS,
   DEPARTMENT_COLORS,
-  getManagersByLeader,
   getSubManagersByManager,
   getEmployeesByReportsTo,
 } from '../data/organizationData';
@@ -41,7 +40,18 @@ export function formTeams(
       // Manager has sub-managers: Create team for each sub-manager
       subManagersForManager.forEach(subManager => {
         const teamEmployees = getEmployeesByReportsTo(subManager.sub_manager_id, employees);
-        
+
+        // Add leader as first member of the team
+        const leaderAsEmployee: Employee = {
+          employee_id: leader.leader_id,
+          name: leader.name,
+          gender: 'M', // Default
+          reports_to: '', // Top of hierarchy
+          department: leader.department,
+          special_needs: false,
+          role: 'LEADER',
+        };
+
         // Add sub-manager as employee in the team
         const subManagerAsEmployee: Employee = {
           employee_id: subManager.sub_manager_id,
@@ -52,24 +62,35 @@ export function formTeams(
           special_needs: false,
           role: 'SUB_MANAGER',
         };
-        
+
         teams.push({
           team_id: `T${String(teamIdCounter).padStart(3, '0')}`,
           team_name: `${subManager.name}'s Team`,
           leader_id: leader.leader_id,
           manager_id: manager.manager_id,
           sub_manager_id: subManager.sub_manager_id,
-          members: [subManagerAsEmployee, ...teamEmployees],
+          members: [leaderAsEmployee, subManagerAsEmployee, ...teamEmployees],
           department: subManager.department,
           color: teamColor,
         });
-        
+
         teamIdCounter++;
       });
     } else {
-      // No sub-managers: Create team with manager + direct reports
+      // No sub-managers: Create team with leader + manager + direct reports
       const teamEmployees = getEmployeesByReportsTo(manager.manager_id, employees);
-      
+
+      // Add leader as first member of the team
+      const leaderAsEmployee: Employee = {
+        employee_id: leader.leader_id,
+        name: leader.name,
+        gender: 'M', // Default
+        reports_to: '', // Top of hierarchy
+        department: leader.department,
+        special_needs: false,
+        role: 'LEADER',
+      };
+
       // Add manager as employee in the team
       const managerAsEmployee: Employee = {
         employee_id: manager.manager_id,
@@ -80,17 +101,17 @@ export function formTeams(
         special_needs: false,
         role: 'MANAGER',
       };
-      
+
       teams.push({
         team_id: `T${String(teamIdCounter).padStart(3, '0')}`,
         team_name: `${manager.name}'s Team`,
         leader_id: leader.leader_id,
         manager_id: manager.manager_id,
-        members: [managerAsEmployee, ...teamEmployees],
+        members: [leaderAsEmployee, managerAsEmployee, ...teamEmployees],
         department: manager.department,
         color: teamColor,
       });
-      
+
       teamIdCounter++;
     }
   });

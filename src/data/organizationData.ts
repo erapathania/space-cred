@@ -6,7 +6,7 @@
  * No code is executed on module load to avoid breaking the app.
  */
 
-import type { Leader, Manager, SubManager, Employee, Gender, EmployeeRole } from '../types';
+import type { Leader, Manager, SubManager, Employee, Gender } from '../types';
 
 // Department names
 export const DEPARTMENTS = [

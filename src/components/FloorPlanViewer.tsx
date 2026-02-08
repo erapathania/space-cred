@@ -12,7 +12,8 @@ import './FloorPlanViewer.css';
 
 // Rendering constants
 const REF_SEAT_RADIUS = 12;
-const ALLOC_SEAT_SIZE = 32; // Increased from 24 to 32 (33% larger)
+const ALLOC_SEAT_SIZE = 70; // Increased by 20-30% as per requirements
+const ICON_SIZE = ALLOC_SEAT_SIZE * 0.65; // Icon is 65% of seat size
 
 interface FloorPlanViewerProps {
   imagePath: string;
@@ -65,12 +66,15 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [hoveredSeat, setHoveredSeat] = useState<AllocatedSeat | null>(null);
+  const [hoveredSeat, setHoveredSeat] = useState<EnhancedAllocatedSeat | null>(null);
   const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
+  const [maleIcon, setMaleIcon] = useState<HTMLImageElement | null>(null);
+  const [femaleIcon, setFemaleIcon] = useState<HTMLImageElement | null>(null);
   
   const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Load image
+  // Load floor plan image
   useEffect(() => {
     const img = new Image();
     img.onload = () => {
@@ -82,6 +86,17 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
     };
     img.src = imagePath;
   }, [imagePath]);
+
+  // Load gender icons
+  useEffect(() => {
+    const male = new Image();
+    male.src = '/assets/icons/male.jpg';
+    male.onload = () => setMaleIcon(male);
+
+    const female = new Image();
+    female.src = '/assets/icons/female.webp';
+    female.onload = () => setFemaleIcon(female);
+  }, []);
 
   // Get SVG coordinates from mouse event
   const getSvgCoords = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -159,7 +174,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   };
 
   // Handle mouse up
-  const handleMouseUp = (e: React.MouseEvent<SVGSVGElement>) => {
+  const handleMouseUp = (_e: React.MouseEvent<SVGSVGElement>) => {
     // Finish drawing table
     if (drawingRect && isTableDrawingMode && onTableDrawn) {
       const x = Math.min(drawingRect.startX, drawingRect.currentX);
@@ -301,8 +316,8 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   y={table.y}
                   width={table.width}
                   height={table.height}
-                  fill="rgba(255, 215, 0, 0.1)"
-                  stroke="#FFD700"
+                  fill="rgba(192, 192, 192, 0.1)"
+                  stroke="#C0C0C0"
                   strokeWidth={2}
                   strokeDasharray="10,5"
                   style={{ pointerEvents: 'none' }}
@@ -310,7 +325,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                 <text
                   x={table.x + 10}
                   y={table.y + 20}
-                  fill="#FFD700"
+                  fill="#C0C0C0"
                   fontSize="14"
                   fontWeight="bold"
                   style={{ pointerEvents: 'none' }}
@@ -320,7 +335,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                 <text
                   x={table.x + 10}
                   y={table.y + 40}
-                  fill="#FFD700"
+                  fill="#C0C0C0"
                   fontSize="12"
                   style={{ pointerEvents: 'none' }}
                 >
@@ -337,8 +352,8 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
               y={Math.min(drawingRect.startY, drawingRect.currentY)}
               width={Math.abs(drawingRect.currentX - drawingRect.startX)}
               height={Math.abs(drawingRect.currentY - drawingRect.startY)}
-              fill="rgba(255, 215, 0, 0.2)"
-              stroke="#FFD700"
+              fill="rgba(192, 192, 192, 0.2)"
+              stroke="#C0C0C0"
               strokeWidth={3}
               strokeDasharray="5,5"
               style={{ pointerEvents: 'none' }}
@@ -360,77 +375,70 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             />
           ))}
 
-          {/* Allocated seats (COLORED WITH GENDER ICONS & ROLE BADGES) */}
+          {/* Allocated seats (SQUARES WITH IMAGE ICONS - NO EMOJIS) */}
           {allocatedSeats.map((seat) => {
-            const teamSeats = seat.assigned_team ? seatsByTeam.get(seat.assigned_team) || [] : [];
-            const seatNumber = teamSeats.indexOf(seat) + 1;
-            const color = seat.assigned_team && getTeamColor 
-              ? getTeamColor(seat.assigned_team)
-              : SEAT_COLORS[seat.seat_type];
+            // Get enhanced data for this seat
+            const enhancedSeat = enhancedSeats.find(e => e.seat_ref_id === seat.seat_ref_id);
+            
+            // Determine seat background (neutral light gray)
+            const seatBg = '#F5F5F5';  // Neutral light gray background
+            
+            // Get department color for table outline (not seat fill)
+            const deptColor = enhancedSeat?.department ? '#C0C0C0' : '#999';
             
             const isHighlighted = highlightedTeam === seat.assigned_team;
             const isFaded = highlightedTeam && highlightedTeam !== seat.assigned_team;
-            
-            // Get enhanced data for this seat
-            const enhancedSeat = enhancedSeats.find(e => e.seat_ref_id === seat.seat_ref_id);
-            const genderIcon = enhancedSeat?.employee_gender === 'F' ? '👩' : '👨';
             const isLeader = enhancedSeat?.employee_role === 'LEADER';
+            
+            // Select icon based on gender
+            const iconSrc = enhancedSeat?.employee_gender === 'F' 
+              ? '/assets/icons/female.webp' 
+              : '/assets/icons/male.jpg';
             
             return (
               <g key={`alloc-${seat.seat_ref_id}`}>
-                {/* Leader star badge (behind seat) */}
+                {/* Leader outline (thin gold border) */}
                 {isLeader && (
-                  <circle
-                    cx={seat.x}
-                    cy={seat.y}
-                    r={ALLOC_SEAT_SIZE / 2 + 4}
+                  <rect
+                    x={seat.x - ALLOC_SEAT_SIZE / 2 - 2}
+                    y={seat.y - ALLOC_SEAT_SIZE / 2 - 2}
+                    width={ALLOC_SEAT_SIZE + 4}
+                    height={ALLOC_SEAT_SIZE + 4}
                     fill="none"
-                    stroke="#FFD700"
-                    strokeWidth={3}
+                    stroke="#D4AF37"
+                    strokeWidth={2}
+                    rx={6}
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
                 
-                {/* Seat rectangle */}
+                {/* Seat square (neutral background) */}
                 <rect
                   x={seat.x - ALLOC_SEAT_SIZE / 2}
                   y={seat.y - ALLOC_SEAT_SIZE / 2}
                   width={ALLOC_SEAT_SIZE}
                   height={ALLOC_SEAT_SIZE}
-                  fill={color}
+                  fill={seatBg}
                   fillOpacity={isFaded ? 0.3 : 1}
-                  stroke={isHighlighted ? '#FFD700' : 'white'}
-                  strokeWidth={isHighlighted ? 3 : 2}
+                  stroke={isHighlighted ? deptColor : '#DDD'}
+                  strokeWidth={isHighlighted ? 3 : 1}
                   rx={4}
-                  onMouseEnter={() => setHoveredSeat(seat)}
+                  onMouseEnter={() => enhancedSeat && setHoveredSeat(enhancedSeat)}
                   onMouseLeave={() => setHoveredSeat(null)}
                   style={{ pointerEvents: 'all', cursor: 'pointer' }}
                 />
                 
-                {/* Gender icon */}
+                {/* Gender icon (image, centered inside seat) */}
                 {enhancedSeat && (
-                  <text
-                    x={seat.x}
-                    y={seat.y + 6}
-                    textAnchor="middle"
-                    fontSize="18"
-                    style={{ pointerEvents: 'none', userSelect: 'none' }}
-                  >
-                    {genderIcon}
-                  </text>
-                )}
-                
-                {/* Leader star icon (on top) */}
-                {isLeader && (
-                  <text
-                    x={seat.x + ALLOC_SEAT_SIZE / 2 - 6}
-                    y={seat.y - ALLOC_SEAT_SIZE / 2 + 10}
-                    textAnchor="middle"
-                    fontSize="14"
-                    style={{ pointerEvents: 'none', userSelect: 'none' }}
-                  >
-                    ⭐
-                  </text>
+                  <image
+                    href={iconSrc}
+                    x={seat.x - ICON_SIZE / 2}
+                    y={seat.y - ICON_SIZE / 2}
+                    width={ICON_SIZE}
+                    height={ICON_SIZE}
+                    opacity={isFaded ? 0.3 : 0.9}
+                    style={{ pointerEvents: 'none' }}
+                  />
                 )}
               </g>
             );
@@ -471,9 +479,28 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
       )}
 
       <div className="viewer-instructions">
-        <span className="legend-item"><span className="dot red"></span> Red = Reference seats</span>
-        {tables.length > 0 && <span className="legend-item"><span className="dot gold"></span> Gold = Tables</span>}
-        <span className="legend-item">Colored squares = Team assignments</span>
+        <div className="legend-title">Legend:</div>
+        <span className="legend-item">
+          <span className="dot red"></span> Red circles = Reference seats (ADMIN)
+        </span>
+        {tables.length > 0 && (
+          <span className="legend-item">
+            <span className="dot silver"></span> Silver outlines = Tables
+          </span>
+        )}
+        {allocatedSeats.length > 0 && (
+          <>
+            <span className="legend-item">
+              <span className="seat-square"></span> Light gray squares = Assigned seats
+            </span>
+            <span className="legend-item">
+              <span className="icon-male"></span> Male icon / <span className="icon-female"></span> Female icon = Employee gender
+            </span>
+            <span className="legend-item">
+              <span className="leader-outline"></span> Gold outline = Leader seat
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

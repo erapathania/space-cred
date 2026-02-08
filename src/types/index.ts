@@ -29,6 +29,14 @@ export const AllocationStrategy = {
 
 export type AllocationStrategy = typeof AllocationStrategy[keyof typeof AllocationStrategy];
 
+// NEW: Allocation modes (two distinct approaches)
+export const AllocationMode = {
+  POD_BASED: 'POD_BASED',           // Allocate entire departments to PODs
+  MANAGER_BASED: 'MANAGER_BASED',   // Manager-centric allocation
+} as const;
+
+export type AllocationMode = typeof AllocationMode[keyof typeof AllocationMode];
+
 // Table (rectangular block) - ADMIN creates by drawing rectangles
 export interface Table {
   table_id: string;
@@ -37,6 +45,19 @@ export interface Table {
   width: number;
   height: number;
   capacity: number;  // Max seats this table can hold
+  pod_id?: string;  // NEW: POD assignment for clustering
+}
+
+// POD (Physical Office Division) - groups of nearby tables
+export interface Pod {
+  pod_id: string;
+  name: string;
+  tables: string[];  // table IDs in this POD
+  x: number;  // Bounding box
+  y: number;
+  width: number;
+  height: number;
+  color?: string;  // Optional color for POD
 }
 
 // Seat attributes (for preference matching)
@@ -187,4 +208,16 @@ export interface EnhancedAllocatedSeat extends AllocatedSeat {
   employee_gender?: Gender;
   department?: string;
   table_id?: string;
+  is_manual_override?: boolean;  // NEW: Track if seat was manually assigned
+}
+
+// Manual override action (for undo/redo and persistence)
+export interface ManualOverride {
+  override_id: string;
+  action_type: 'SWAP' | 'MOVE' | 'ASSIGN';
+  seat_id: string;
+  employee_id: string;
+  previous_seat_id?: string;
+  previous_employee_id?: string;
+  timestamp: number;
 }

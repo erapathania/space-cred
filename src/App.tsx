@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 import { FloorPlanViewer } from './components/FloorPlanViewer';
 import { LeaderPreferenceModal } from './components/LeaderPreferenceModal';
 import { SeatAttributeModal } from './components/SeatAttributeModal';
-import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat, Leader, LeaderPreferences, SeatAttributes } from './types';
+import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat, Leader, LeaderPreferences, SeatAttributes, AllocationMode } from './types';
 import { UserRole, SeatStatus } from './types';
 import { saveReferenceSeats, loadReferenceSeats, saveTables, loadTables } from './utils/storage';
 import { mapSeatsToTables } from './utils/tableMapping';
@@ -26,7 +26,7 @@ function App() {
   const [referenceSeats, setReferenceSeats] = useState<ReferenceSeat[]>([]);
   const [isReferenceMarkingMode, setIsReferenceMarkingMode] = useState(false);
   
-  // Tables (GOLD RECTANGLES) - managed by ADMIN
+  // Tables (SILVER RECTANGLES) - managed by ADMIN
   const [tables, setTables] = useState<Table[]>([]);
   const [isTableDrawingMode, setIsTableDrawingMode] = useState(false);
   
@@ -49,10 +49,13 @@ function App() {
   
   // Leader preference management
   const [selectedLeader, setSelectedLeader] = useState<Leader | null>(null);
-  const [leaderPreferences, setLeaderPreferences] = useState<Map<string, LeaderPreferences>>(new Map());
+  const [_leaderPreferences, setLeaderPreferences] = useState<Map<string, LeaderPreferences>>(new Map());
   
   // Seat attribute management (ADMIN)
   const [selectedSeatForAttributes, setSelectedSeatForAttributes] = useState<ReferenceSeat | null>(null);
+
+  // Allocation mode (POD_BASED or MANAGER_BASED)
+  const [allocationMode, setAllocationMode] = useState<AllocationMode>('POD_BASED');
 
   // Load reference seats and tables on mount
   useEffect(() => {
@@ -228,12 +231,12 @@ function App() {
       ? referenceSeats
       : mapSeatsToTables(referenceSeats, tables);
     
-    // Run enhanced allocation
-    const enhancedAllocations = allocateWithLeaders(mappedSeats, tables, teams);
-    
+    // Run enhanced allocation with selected mode
+    const { allocatedSeats: enhancedAllocations, pods: _pods } = allocateWithLeaders(mappedSeats, tables, teams, allocationMode);
+
     // Store enhanced seats for UI display
     setEnhancedSeats(enhancedAllocations);
-    
+
     // Convert to AllocatedSeat format for compatibility
     const allocations: AllocatedSeat[] = enhancedAllocations.map(seat => ({
       seat_ref_id: seat.seat_ref_id,
@@ -297,13 +300,6 @@ function App() {
       )
     );
     console.log(`✅ Updated attributes for ${seatId}:`, attributes);
-  };
-
-  // ADMIN: Handle seat right-click to open attribute modal
-  const handleSeatRightClick = (seat: ReferenceSeat) => {
-    if (currentRole === UserRole.ADMIN) {
-      setSelectedSeatForAttributes(seat);
-    }
   };
 
   // Helper function to get team color
@@ -583,13 +579,34 @@ function App() {
               )}
 
               <div className="panel">
+                <h3>🎯 Allocation Mode</h3>
+                <p className="hint">Choose allocation strategy</p>
+                <div className="mode-toggle-group">
+                  <button
+                    className={`mode-toggle-btn ${allocationMode === 'POD_BASED' ? 'active' : ''}`}
+                    onClick={() => setAllocationMode('POD_BASED')}
+                  >
+                    <div className="mode-title">POD-Based</div>
+                    <div className="mode-desc">Departments → PODs → Tables</div>
+                  </button>
+                  <button
+                    className={`mode-toggle-btn ${allocationMode === 'MANAGER_BASED' ? 'active' : ''}`}
+                    onClick={() => setAllocationMode('MANAGER_BASED')}
+                  >
+                    <div className="mode-title">Manager-Based</div>
+                    <div className="mode-desc">Managers → Closest Tables</div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="panel">
                 <h3>🎲 Generate Allocation</h3>
                 <p className="hint">
                   {referenceSeats.length === 0
                     ? '⚠️ No seats available'
                     : tables.length === 0
                     ? '⚠️ No tables defined'
-                    : 'Generate table-based allocation'}
+                    : `Using ${allocationMode === 'POD_BASED' ? 'POD-Based' : 'Manager-Based'} mode`}
                 </p>
                 <button
                   className="btn btn-primary"
