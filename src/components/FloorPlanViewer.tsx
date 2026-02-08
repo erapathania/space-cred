@@ -67,6 +67,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [hoveredSeat, setHoveredSeat] = useState<EnhancedAllocatedSeat | null>(null);
+  const [hoveredTeam, setHoveredTeam] = useState<string | null>(null);
   const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
   const [maleIcon, setMaleIcon] = useState<HTMLImageElement | null>(null);
   const [femaleIcon, setFemaleIcon] = useState<HTMLImageElement | null>(null);
@@ -306,9 +307,28 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             preserveAspectRatio="none"
           />
 
-          {/* Tables (debug mode or always show in admin) */}
-          {(showTableBoundaries || isTableDrawingMode) && tables.map(table => {
+          {/* Tables - highlight when team is hovered */}
+          {tables.map(table => {
             const seatsInTable = referenceSeats.filter(s => s.table_id === table.table_id).length;
+            
+            // Check if this table contains seats from the hovered/highlighted team
+            const activeTeam = hoveredTeam || highlightedTeam;
+            const tableSeats = allocatedSeats.filter(s => {
+              const refSeat = referenceSeats.find(r => r.seat_ref_id === s.seat_ref_id);
+              return refSeat?.table_id === table.table_id;
+            });
+            const hasActiveTeam = activeTeam && tableSeats.some(s => s.assigned_team === activeTeam);
+            const isFaded = activeTeam && !hasActiveTeam;
+            
+            // Get team color for this table
+            const tableTeam = tableSeats.find(s => s.assigned_team)?.assigned_team;
+            const teamColor = tableTeam && getTeamColor ? getTeamColor(tableTeam) : '#C0C0C0';
+            
+            // Show tables in debug mode OR when there's an active hover/highlight
+            const shouldShow = showTableBoundaries || isTableDrawingMode || activeTeam;
+            
+            if (!shouldShow) return null;
+            
             return (
               <g key={table.table_id}>
                 <rect
@@ -316,31 +336,39 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   y={table.y}
                   width={table.width}
                   height={table.height}
-                  fill="rgba(192, 192, 192, 0.1)"
-                  stroke="#C0C0C0"
-                  strokeWidth={2}
-                  strokeDasharray="10,5"
+                  fill={hasActiveTeam ? teamColor : "rgba(192, 192, 192, 0.1)"}
+                  fillOpacity={hasActiveTeam ? 0.15 : (isFaded ? 0.05 : 0.1)}
+                  stroke={hasActiveTeam ? teamColor : "#C0C0C0"}
+                  strokeWidth={hasActiveTeam ? 4 : 2}
+                  strokeDasharray={hasActiveTeam ? "none" : "10,5"}
+                  strokeOpacity={isFaded ? 0.3 : 1}
                   style={{ pointerEvents: 'none' }}
                 />
-                <text
-                  x={table.x + 10}
-                  y={table.y + 20}
-                  fill="#C0C0C0"
-                  fontSize="14"
-                  fontWeight="bold"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {table.table_id}
-                </text>
-                <text
-                  x={table.x + 10}
-                  y={table.y + 40}
-                  fill="#C0C0C0"
-                  fontSize="12"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  Cap: {table.capacity} | Seats: {seatsInTable}
-                </text>
+                {(showTableBoundaries || isTableDrawingMode) && (
+                  <>
+                    <text
+                      x={table.x + 10}
+                      y={table.y + 20}
+                      fill="#C0C0C0"
+                      fontSize="14"
+                      fontWeight="bold"
+                      opacity={isFaded ? 0.3 : 1}
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {table.table_id}
+                    </text>
+                    <text
+                      x={table.x + 10}
+                      y={table.y + 40}
+                      fill="#C0C0C0"
+                      fontSize="12"
+                      opacity={isFaded ? 0.3 : 1}
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      Cap: {table.capacity} | Seats: {seatsInTable}
+                    </text>
+                  </>
+                )}
               </g>
             );
           })}
@@ -380,15 +408,22 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             // Get enhanced data for this seat
             const enhancedSeat = enhancedSeats.find(e => e.seat_ref_id === seat.seat_ref_id);
             
-            // Determine seat background (neutral light gray)
-            const seatBg = '#F5F5F5';  // Neutral light gray background
+            // Get team color from parent component
+            const teamColor = getTeamColor ? getTeamColor(seat.assigned_team || '') : '#C0C0C0';
             
-            // Get department color for table outline (not seat fill)
-            const deptColor = enhancedSeat?.department ? '#C0C0C0' : '#999';
-            
-            const isHighlighted = highlightedTeam === seat.assigned_team;
-            const isFaded = highlightedTeam && highlightedTeam !== seat.assigned_team;
+            // Determine if this seat should be highlighted or faded
+            const activeTeam = hoveredTeam || highlightedTeam;
+            const isHighlighted = activeTeam === seat.assigned_team;
+            const isFaded = activeTeam && activeTeam !== seat.assigned_team;
             const isLeader = enhancedSeat?.employee_role === 'LEADER';
+            
+            // Seat background: neutral by default, team color when highlighted
+            const seatBg = isHighlighted ? teamColor : '#F5F5F5';
+            const seatOpacity = isFaded ? 0.3 : 1;
+            
+            // Border: thicker and team-colored when highlighted
+            const borderColor = isHighlighted ? teamColor : '#DDD';
+            const borderWidth = isHighlighted ? 4 : 1;
             
             // Select icon based on gender
             const iconSrc = enhancedSeat?.employee_gender === 'F' 
@@ -412,19 +447,27 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   />
                 )}
                 
-                {/* Seat square (neutral background) */}
+                {/* Seat square (neutral background, team color on hover) */}
                 <rect
                   x={seat.x - ALLOC_SEAT_SIZE / 2}
                   y={seat.y - ALLOC_SEAT_SIZE / 2}
                   width={ALLOC_SEAT_SIZE}
                   height={ALLOC_SEAT_SIZE}
                   fill={seatBg}
-                  fillOpacity={isFaded ? 0.3 : 1}
-                  stroke={isHighlighted ? deptColor : '#DDD'}
-                  strokeWidth={isHighlighted ? 3 : 1}
+                  fillOpacity={isHighlighted ? 0.4 : seatOpacity}
+                  stroke={borderColor}
+                  strokeWidth={borderWidth}
                   rx={4}
-                  onMouseEnter={() => enhancedSeat && setHoveredSeat(enhancedSeat)}
-                  onMouseLeave={() => setHoveredSeat(null)}
+                  onMouseEnter={() => {
+                    if (enhancedSeat) {
+                      setHoveredSeat(enhancedSeat);
+                      setHoveredTeam(seat.assigned_team || null);
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredSeat(null);
+                    setHoveredTeam(null);
+                  }}
                   style={{ pointerEvents: 'all', cursor: 'pointer' }}
                 />
                 
@@ -436,7 +479,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                     y={seat.y - ICON_SIZE / 2}
                     width={ICON_SIZE}
                     height={ICON_SIZE}
-                    opacity={isFaded ? 0.3 : 0.9}
+                    opacity={seatOpacity * 0.9}
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
