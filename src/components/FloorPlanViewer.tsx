@@ -10,11 +10,11 @@ import type { ReferenceSeat, AllocatedSeat, Table, EnhancedAllocatedSeat } from 
 import { SEAT_COLORS, REFERENCE_SEAT_COLOR } from '../types';
 import './FloorPlanViewer.css';
 
-// Rendering constants - CLEAN MINIMAL DESIGN
-const REF_SEAT_RADIUS = 8;
-const SEAT_SIZE = 24; // Small, clean squares like flight booking
-const ICON_SIZE = 16; // Icon inside square
-const BORDER_RADIUS = 4; // Minimal rounding
+// Rendering constants - ULTRA MINIMAL PRODUCT DESIGN
+const REF_SEAT_RADIUS = 6;
+const SEAT_SIZE = 20; // Ultra small, quiet squares
+const ICON_SIZE = 12; // Tiny icon inside
+const BORDER_RADIUS = 2; // Almost no rounding
 
 interface FloorPlanViewerProps {
   imagePath: string;
@@ -308,7 +308,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             preserveAspectRatio="none"
           />
 
-          {/* Tables - highlight when team is hovered */}
+          {/* Tables - ALWAYS VISIBLE (primary visual unit) */}
           {tables.map(table => {
             const seatsInTable = referenceSeats.filter(s => s.table_id === table.table_id).length;
             
@@ -321,52 +321,49 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             const hasActiveTeam = activeTeam && tableSeats.some(s => s.assigned_team === activeTeam);
             const isFaded = activeTeam && !hasActiveTeam;
             
-            // Get team color for this table
+            // Get team color for this table (very soft pastel)
             const tableTeam = tableSeats.find(s => s.assigned_team)?.assigned_team;
-            const teamColor = tableTeam && getTeamColor ? getTeamColor(tableTeam) : '#C0C0C0';
-            
-            // Show tables in debug mode OR when there's an active hover/highlight
-            const shouldShow = showTableBoundaries || isTableDrawingMode || activeTeam;
-            
-            if (!shouldShow) return null;
+            const teamColor = tableTeam && getTeamColor ? getTeamColor(tableTeam) : '#F5F5F5';
             
             return (
               <g key={table.table_id}>
+                {/* Table background - subtle tint */}
                 <rect
                   x={table.x}
                   y={table.y}
                   width={table.width}
                   height={table.height}
-                  fill={hasActiveTeam ? teamColor : "rgba(192, 192, 192, 0.1)"}
-                  fillOpacity={hasActiveTeam ? 0.15 : (isFaded ? 0.05 : 0.1)}
-                  stroke={hasActiveTeam ? teamColor : "#C0C0C0"}
-                  strokeWidth={hasActiveTeam ? 4 : 2}
-                  strokeDasharray={hasActiveTeam ? "none" : "10,5"}
-                  strokeOpacity={isFaded ? 0.3 : 1}
+                  fill={teamColor}
+                  fillOpacity={hasActiveTeam ? 0.2 : 0.05}
+                  stroke={hasActiveTeam ? teamColor : "#E0E0E0"}
+                  strokeWidth={hasActiveTeam ? 2 : 1}
+                  strokeOpacity={isFaded ? 0.2 : (hasActiveTeam ? 1 : 0.5)}
                   style={{ pointerEvents: 'none' }}
                 />
+                
+                {/* Table labels (only in debug/drawing mode) */}
                 {(showTableBoundaries || isTableDrawingMode) && (
                   <>
                     <text
                       x={table.x + 10}
                       y={table.y + 20}
-                      fill="#C0C0C0"
-                      fontSize="14"
-                      fontWeight="bold"
-                      opacity={isFaded ? 0.3 : 1}
+                      fill="#999"
+                      fontSize="12"
+                      fontWeight="normal"
+                      opacity={isFaded ? 0.2 : 0.6}
                       style={{ pointerEvents: 'none' }}
                     >
                       {table.table_id}
                     </text>
                     <text
                       x={table.x + 10}
-                      y={table.y + 40}
-                      fill="#C0C0C0"
-                      fontSize="12"
-                      opacity={isFaded ? 0.3 : 1}
+                      y={table.y + 36}
+                      fill="#999"
+                      fontSize="10"
+                      opacity={isFaded ? 0.2 : 0.5}
                       style={{ pointerEvents: 'none' }}
                     >
-                      Cap: {table.capacity} | Seats: {seatsInTable}
+                      {seatsInTable} seats
                     </text>
                   </>
                 )}
@@ -418,13 +415,14 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             const isFaded = activeTeam && activeTeam !== seat.assigned_team;
             const isLeader = enhancedSeat?.employee_role === 'LEADER';
             
-            // Seat background: neutral by default, team color when highlighted
-            const seatBg = isHighlighted ? teamColor : '#F5F5F5';
-            const seatOpacity = isFaded ? 0.3 : 1;
+            // Seat background: very soft department color (always), brighter when highlighted
+            const seatBg = teamColor;
+            const seatFillOpacity = isHighlighted ? 0.5 : 0.15; // Very soft by default
+            const seatOpacity = isFaded ? 0.2 : 1;
             
-            // Border: thicker and team-colored when highlighted
-            const borderColor = isHighlighted ? teamColor : '#DDD';
-            const borderWidth = isHighlighted ? 4 : 1;
+            // Border: minimal, only visible when highlighted
+            const borderColor = isHighlighted ? teamColor : 'transparent';
+            const borderWidth = isHighlighted ? 1.5 : 0;
             
             // Select icon based on gender
             const iconSrc = enhancedSeat?.employee_gender === 'F' 
@@ -455,16 +453,16 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   style={{ pointerEvents: 'all', cursor: 'pointer' }}
                 />
                 
-                {/* Seat square - CLEAN MINIMAL DESIGN (no shadows, no layers) */}
+                {/* Seat square - ULTRA MINIMAL (very soft colors, no borders unless highlighted) */}
                 <rect
                   x={seat.x - SEAT_SIZE / 2}
                   y={seat.y - SEAT_SIZE / 2}
                   width={SEAT_SIZE}
                   height={SEAT_SIZE}
                   fill={seatBg}
-                  fillOpacity={isHighlighted ? 0.7 : seatOpacity}
+                  fillOpacity={seatFillOpacity * seatOpacity}
                   stroke={borderColor}
-                  strokeWidth={isHighlighted ? 2 : 1}
+                  strokeWidth={borderWidth}
                   rx={BORDER_RADIUS}
                   style={{ pointerEvents: 'none' }}
                 />
