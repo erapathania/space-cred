@@ -10,10 +10,11 @@ import type { ReferenceSeat, AllocatedSeat, Table, EnhancedAllocatedSeat } from 
 import { SEAT_COLORS, REFERENCE_SEAT_COLOR } from '../types';
 import './FloorPlanViewer.css';
 
-// Rendering constants
-const REF_SEAT_RADIUS = 12;
-const ALLOC_SEAT_SIZE = 90; // Significantly larger for better visibility
-const ICON_SIZE = ALLOC_SEAT_SIZE * 0.75; // Icon is 75% of seat size (larger)
+// Rendering constants - CLEAN MINIMAL DESIGN
+const REF_SEAT_RADIUS = 8;
+const SEAT_SIZE = 24; // Small, clean squares like flight booking
+const ICON_SIZE = 16; // Icon inside square
+const BORDER_RADIUS = 4; // Minimal rounding
 
 interface FloorPlanViewerProps {
   imagePath: string;
@@ -434,10 +435,10 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
               <g key={`alloc-${seat.seat_ref_id}`}>
                 {/* Larger invisible hit area for reliable hover */}
                 <rect
-                  x={seat.x - ALLOC_SEAT_SIZE / 2 - 10}
-                  y={seat.y - ALLOC_SEAT_SIZE / 2 - 10}
-                  width={ALLOC_SEAT_SIZE + 20}
-                  height={ALLOC_SEAT_SIZE + 20}
+                  x={seat.x - SEAT_SIZE / 2 - 8}
+                  y={seat.y - SEAT_SIZE / 2 - 8}
+                  width={SEAT_SIZE + 16}
+                  height={SEAT_SIZE + 16}
                   fill="transparent"
                   onMouseEnter={() => {
                     if (seat.assigned_team) {
@@ -454,32 +455,17 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   style={{ pointerEvents: 'all', cursor: 'pointer' }}
                 />
                 
-                {/* Leader outline (thin gold border) */}
-                {isLeader && (
-                  <rect
-                    x={seat.x - ALLOC_SEAT_SIZE / 2 - 2}
-                    y={seat.y - ALLOC_SEAT_SIZE / 2 - 2}
-                    width={ALLOC_SEAT_SIZE + 4}
-                    height={ALLOC_SEAT_SIZE + 4}
-                    fill="none"
-                    stroke="#D4AF37"
-                    strokeWidth={2}
-                    rx={6}
-                    style={{ pointerEvents: 'none' }}
-                  />
-                )}
-                
-                {/* Seat square (neutral background, team color on hover) */}
+                {/* Seat square - CLEAN MINIMAL DESIGN (no shadows, no layers) */}
                 <rect
-                  x={seat.x - ALLOC_SEAT_SIZE / 2}
-                  y={seat.y - ALLOC_SEAT_SIZE / 2}
-                  width={ALLOC_SEAT_SIZE}
-                  height={ALLOC_SEAT_SIZE}
+                  x={seat.x - SEAT_SIZE / 2}
+                  y={seat.y - SEAT_SIZE / 2}
+                  width={SEAT_SIZE}
+                  height={SEAT_SIZE}
                   fill={seatBg}
-                  fillOpacity={isHighlighted ? 0.4 : seatOpacity}
+                  fillOpacity={isHighlighted ? 0.7 : seatOpacity}
                   stroke={borderColor}
-                  strokeWidth={borderWidth}
-                  rx={4}
+                  strokeWidth={isHighlighted ? 2 : 1}
+                  rx={BORDER_RADIUS}
                   style={{ pointerEvents: 'none' }}
                 />
                 
