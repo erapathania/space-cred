@@ -12,8 +12,8 @@ import './FloorPlanViewer.css';
 
 // Rendering constants
 const REF_SEAT_RADIUS = 12;
-const ALLOC_SEAT_SIZE = 70; // Increased by 20-30% as per requirements
-const ICON_SIZE = ALLOC_SEAT_SIZE * 0.65; // Icon is 65% of seat size
+const ALLOC_SEAT_SIZE = 90; // Significantly larger for better visibility
+const ICON_SIZE = ALLOC_SEAT_SIZE * 0.75; // Icon is 75% of seat size (larger)
 
 interface FloorPlanViewerProps {
   imagePath: string;
@@ -432,6 +432,28 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             
             return (
               <g key={`alloc-${seat.seat_ref_id}`}>
+                {/* Larger invisible hit area for reliable hover */}
+                <rect
+                  x={seat.x - ALLOC_SEAT_SIZE / 2 - 10}
+                  y={seat.y - ALLOC_SEAT_SIZE / 2 - 10}
+                  width={ALLOC_SEAT_SIZE + 20}
+                  height={ALLOC_SEAT_SIZE + 20}
+                  fill="transparent"
+                  onMouseEnter={() => {
+                    if (seat.assigned_team) {
+                      setHoveredTeam(seat.assigned_team);
+                      if (enhancedSeat) {
+                        setHoveredSeat(enhancedSeat);
+                      }
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredSeat(null);
+                    setHoveredTeam(null);
+                  }}
+                  style={{ pointerEvents: 'all', cursor: 'pointer' }}
+                />
+                
                 {/* Leader outline (thin gold border) */}
                 {isLeader && (
                   <rect
@@ -458,17 +480,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   stroke={borderColor}
                   strokeWidth={borderWidth}
                   rx={4}
-                  onMouseEnter={() => {
-                    if (enhancedSeat) {
-                      setHoveredSeat(enhancedSeat);
-                      setHoveredTeam(seat.assigned_team || null);
-                    }
-                  }}
-                  onMouseLeave={() => {
-                    setHoveredSeat(null);
-                    setHoveredTeam(null);
-                  }}
-                  style={{ pointerEvents: 'all', cursor: 'pointer' }}
+                  style={{ pointerEvents: 'none' }}
                 />
                 
                 {/* Gender icon (image, centered inside seat) */}

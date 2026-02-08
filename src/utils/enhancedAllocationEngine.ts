@@ -108,6 +108,12 @@ export function allocateWithLeaders(
 /**
  * MODE A: POD-BASED ALLOCATION (CLUSTER-FIRST)
  * Allocate entire departments to PODs, fill tables sequentially
+ * 
+ * STRICT RULES:
+ * 1. Same department → same POD (no jumping)
+ * 2. Same team → same TABLE (hard constraint)
+ * 3. Tables filled contiguously within POD
+ * 4. Only overflow when POD capacity exceeded
  */
 function allocatePodBased(
   seats: ReferenceSeat[],
@@ -119,11 +125,21 @@ function allocatePodBased(
   const usedSeats = new Set<string>();
   const usedTables = new Set<string>();
 
-  console.log(`\n📦 MODE A: POD-BASED ALLOCATION (CLUSTER-FIRST)`);
+  console.log(`\n📦 MODE A: POD-BASED ALLOCATION (CLUSTER-FIRST - STRICT)`);
 
-  // STEP 1: Group tables into PODs
-  const pods = groupTablesIntoPods(tables, 300); // 300px max distance
+  // STEP 1: Group tables into PODs (larger radius for better clustering)
+  const pods = groupTablesIntoPods(tables, 400); // 400px max distance for better clustering
   console.log(`\nCreated ${pods.length} PODs`);
+  
+  // Log POD details
+  pods.forEach(pod => {
+    const podTables = getTablesInPod(tables, pod.pod_id);
+    const totalCapacity = podTables.reduce((sum, t) => {
+      const tableSeats = getSeatsForTable(seats, t.table_id);
+      return sum + tableSeats.length;
+    }, 0);
+    console.log(`  ${pod.pod_id}: ${podTables.length} tables, ${totalCapacity} seats capacity`);
+  });
 
   // PHASE 1: Allocate Leaders First (with SOFT CONSTRAINT preferences)
   console.log(`\n👑 PHASE 1: Allocating ${LEADERS.length} Leaders (with preference scoring)`);
