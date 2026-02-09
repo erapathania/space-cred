@@ -21,7 +21,13 @@ import './App.css';
 function App() {
   // Role management
   const [currentRole, setCurrentRole] = useState<typeof UserRole[keyof typeof UserRole]>(UserRole.ADMIN);
-  
+
+  // Manual edit mode for FACILITY_USER
+  const [isManualEditMode, setIsManualEditMode] = useState(false);
+
+  // Locked seats (manual overrides that should not be changed by allocation)
+  const [lockedSeats, setLockedSeats] = useState<Set<string>>(new Set());
+
   // Reference seats (RED DOTS) - managed by ADMIN
   const [referenceSeats, setReferenceSeats] = useState<ReferenceSeat[]>([]);
   const [isReferenceMarkingMode, setIsReferenceMarkingMode] = useState(false);
@@ -46,6 +52,10 @@ function App() {
   
   // Generated teams (for legend display)
   const [generatedTeams, setGeneratedTeams] = useState<any[]>([]);
+
+  // Performance: Precomputed mappings (currently unused, reserved for future optimizations)
+  const [_teamToSeats, _setTeamToSeats] = useState<Map<string, EnhancedAllocatedSeat[]>>(new Map());
+  const [_tableToSeats, _setTableToSeats] = useState<Map<string, EnhancedAllocatedSeat[]>>(new Map());
   
   // Leader preference management
   const [selectedLeader, setSelectedLeader] = useState<Leader | null>(null);
@@ -64,6 +74,34 @@ function App() {
     setReferenceSeats(loadedSeats);
     setTables(loadedTables);
   }, []);
+
+  // Precompute team and table mappings for performance
+  useEffect(() => {
+    // Precompute team → seats mapping
+    const teamMap = new Map<string, EnhancedAllocatedSeat[]>();
+    enhancedSeats.forEach(seat => {
+      const teamId = seat.assigned_team;
+      if (teamId) {
+        if (!teamMap.has(teamId)) {
+          teamMap.set(teamId, []);
+        }
+        teamMap.get(teamId)!.push(seat);
+      }
+    });
+    _setTeamToSeats(teamMap);
+
+    // Precompute table → seats mapping
+    const tableMap = new Map<string, EnhancedAllocatedSeat[]>();
+    enhancedSeats.forEach(seat => {
+      if (seat.table_id) {
+        if (!tableMap.has(seat.table_id)) {
+          tableMap.set(seat.table_id, []);
+        }
+        tableMap.get(seat.table_id)!.push(seat);
+      }
+    });
+    _setTableToSeats(tableMap);
+  }, [enhancedSeats]);
 
   // Generate unique reference seat ID
   const generateRefSeatId = (): string => {
@@ -218,7 +256,7 @@ function App() {
     const employees = generateEmployees(managers, subManagers);
     
     // Form teams from hierarchy
-    const teams = formTeams(managers, subManagers, employees);
+    const teams = formTeams(managers, subManagers, employees, tables);
     
     // Store teams for legend display
     setGeneratedTeams(teams);
@@ -292,9 +330,9 @@ function App() {
 
   // ADMIN: Handle seat attribute save
   const handleSaveSeatAttributes = (seatId: string, attributes: SeatAttributes) => {
-    setReferenceSeats(prev => 
-      prev.map(seat => 
-        seat.seat_ref_id === seatId 
+    setReferenceSeats(prev =>
+      prev.map(seat =>
+        seat.seat_ref_id === seatId
           ? { ...seat, attributes }
           : seat
       )
@@ -302,11 +340,71 @@ function App() {
     console.log(`✅ Updated attributes for ${seatId}:`, attributes);
   };
 
-  // Helper function to get team color
+  // FACILITY_USER: Lock/unlock seat for manual override
+  const handleSeatLock = (seatRefId: string) => {
+    setLockedSeats(prev => new Set(prev).add(seatRefId));
+    console.log(`🔒 Locked seat ${seatRefId}`);
+  };
+
+  const handleSeatUnlock = (seatRefId: string) => {
+    setLockedSeats(prev => {
+      const updated = new Set(prev);
+      updated.delete(seatRefId);
+      return updated;
+    });
+    console.log(`🔓 Unlocked seat ${seatRefId}`);
+  };
+
+  // FACILITY_USER: Swap two seats (manual override)
+  const handleSeatSwap = (seatId1: string, seatId2: string) => {
+    setAllocatedSeats(prev => {
+      const seat1 = prev.find(s => s.seat_ref_id === seatId1);
+      const seat2 = prev.find(s => s.seat_ref_id === seatId2);
+
+      if (!seat1 || !seat2) return prev;
+
+      return prev.map(seat => {
+        if (seat.seat_ref_id === seatId1) {
+          return { ...seat2, seat_ref_id: seatId1, x: seat.x, y: seat.y };
+        }
+        if (seat.seat_ref_id === seatId2) {
+          return { ...seat1, seat_ref_id: seatId2, x: seat.x, y: seat.y };
+        }
+        return seat;
+      });
+    });
+
+    // Lock both seats after swap
+    handleSeatLock(seatId1);
+    handleSeatLock(seatId2);
+
+    console.log(`🔄 Swapped seats ${seatId1} ↔ ${seatId2}`);
+  };
+
+  // Helper function to get team color - DEPARTMENT-BASED PALETTE (max 8 hues)
+  const DEPARTMENT_COLORS: Record<string, string> = {
+    Engineering: '#3B82F6',      // Blue
+    Design: '#8B5CF6',          // Purple
+    Marketing: '#EC4899',       // Pink
+    Sales: '#EF4444',           // Red
+    Operations: '#F59E0B',      // Amber
+    HR: '#10B981',              // Green
+    Finance: '#06B6D4',         // Cyan
+    Legal: '#6366F1',           // Indigo
+  };
+
   const getTeamColor = (teamId: string | undefined): string => {
     if (!teamId) return '#CCCCCC';
     const team = generatedTeams.find(t => t.team_id === teamId);
-    return team?.color || '#CCCCCC';
+
+    if (!team) return '#CCCCCC';
+
+    // Get base department color
+    const baseColor = DEPARTMENT_COLORS[team.department] || '#CCCCCC';
+
+    // Use base color directly - all teams in same department get same color
+    // (shading by role happens in the UI via opacity/lightness adjustments)
+    return baseColor;
   };
 
   // Statistics
@@ -318,6 +416,12 @@ function App() {
     teams: generatedTeams.length,
     totalTeamSize: generatedTeams.reduce((sum: number, team: any) => sum + team.members.length, 0),
   };
+
+  // Debug logging for manual edit mode
+  useEffect(() => {
+    const isReadOnlyValue = currentRole === UserRole.FACILITY_USER ? !isManualEditMode : false;
+    console.log('🔍 App state - currentRole:', currentRole, 'isManualEditMode:', isManualEditMode, 'isReadOnly:', isReadOnlyValue);
+  }, [currentRole, isManualEditMode]);
 
   return (
     <div className="app">
@@ -363,9 +467,13 @@ function App() {
             isReferenceMarkingMode={isReferenceMarkingMode}
             isTableDrawingMode={isTableDrawingMode}
             showTableBoundaries={showTableBoundaries}
-            isReadOnly={currentRole === UserRole.FACILITY_USER}
+            isReadOnly={currentRole === UserRole.FACILITY_USER ? !isManualEditMode : false}
             getTeamColor={getTeamColor}
             highlightedTeam={highlightedTeam}
+            lockedSeats={lockedSeats}
+            onSeatLock={handleSeatLock}
+            onSeatUnlock={handleSeatUnlock}
+            onSeatSwap={handleSeatSwap}
           />
         </div>
 
@@ -532,6 +640,44 @@ function App() {
                   {showTableBoundaries ? '✓ Showing Tables' : 'Show Tables'}
                 </button>
               </div>
+
+              {allocatedSeats.length > 0 && (
+                <div className="panel">
+                  <h3>✏️ Manual Seat Adjustment</h3>
+                  <p className="hint">
+                    {isManualEditMode
+                      ? 'Drag and drop seats to manually adjust positions'
+                      : 'Enable manual edit mode to modify seat allocations'}
+                  </p>
+                  <button
+                    className={`btn ${isManualEditMode ? 'btn-warning' : 'btn-secondary'}`}
+                    onClick={() => {
+                      const newMode = !isManualEditMode;
+                      console.log('🔄 Manual Edit Mode toggled:', newMode);
+                      setIsManualEditMode(newMode);
+                    }}
+                    style={isManualEditMode ? {
+                      border: '2px solid var(--silver)',
+                      boxShadow: '0 0 12px var(--silver-glow)'
+                    } : {}}
+                  >
+                    {isManualEditMode ? '✓ Manual Edit Mode: ON' : 'Enable Manual Edit'}
+                  </button>
+                  {isManualEditMode && (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '8px 12px',
+                      background: 'rgba(192, 192, 192, 0.1)',
+                      border: '1px solid var(--silver)',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: 'var(--text-primary)'
+                    }}>
+                      💡 Tip: Click and drag seats on the floor plan to reposition them
+                    </div>
+                  )}
+                </div>
+              )}
 
               {allocationOptions.length > 0 && generatedTeams.length > 0 && (
                 <div className="panel">

@@ -587,10 +587,6 @@ body {
   box-shadow: 0 2px 8px var(--silver-glow);
 }
 
-.dot.gold {
-  background: var(--silver);
-}
-
 .dot.silver {
   background: var(--silver);
 }

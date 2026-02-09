@@ -7,7 +7,7 @@
  * - Leader is included as first member for accurate team counting
  */
 
-import type { EnhancedTeam, Manager, SubManager, Employee } from '../types';
+import type { EnhancedTeam, Manager, SubManager, Employee, Table } from '../types';
 import {
   LEADERS,
   DEPARTMENT_COLORS,
@@ -21,11 +21,17 @@ import {
 export function formTeams(
   managers: Manager[],
   subManagers: SubManager[],
-  employees: Employee[]
+  employees: Employee[],
+  tables?: Table[]  // Optional: for validation
 ): EnhancedTeam[] {
   const teams: EnhancedTeam[] = [];
   let teamIdCounter = 1;
-  
+
+  // Calculate largest table capacity for validation
+  const largestTableCapacity = tables
+    ? Math.max(...tables.map(t => t.capacity || 10))
+    : Infinity;
+
   // Process each manager
   managers.forEach((manager, managerIndex) => {
     const subManagersForManager = getSubManagersByManager(manager.manager_id, subManagers);
@@ -74,6 +80,12 @@ export function formTeams(
           color: teamColor,
         });
 
+        // Validate team size
+        const teamSize = 2 + teamEmployees.length;
+        if (teamSize > largestTableCapacity) {
+          console.warn(`⚠️ Team ${teamIdCounter} (${subManager.name}'s Team) has ${teamSize} members, exceeds largest table capacity (${largestTableCapacity})`);
+        }
+
         teamIdCounter++;
       });
     } else {
@@ -111,6 +123,12 @@ export function formTeams(
         department: manager.department,
         color: teamColor,
       });
+
+      // Validate team size
+      const teamSize = 2 + teamEmployees.length;
+      if (teamSize > largestTableCapacity) {
+        console.warn(`⚠️ Team ${teamIdCounter} (${manager.name}'s Team) has ${teamSize} members, exceeds largest table capacity (${largestTableCapacity})`);
+      }
 
       teamIdCounter++;
     }

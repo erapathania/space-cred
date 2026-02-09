@@ -1,136 +1,66 @@
 /**
- * Enhanced Allocation Engine
+ * TABLE-STRICT ALLOCATION ENGINE
  *
- * TWO ALLOCATION MODES:
+ * HARD CONSTRAINTS (NEVER VIOLATED):
+ * 1. Same team MUST sit on SAME TABLE
+ * 2. Teams never split across tables
+ * 3. If team doesn't fit on table → fail gracefully or spill to next table in same POD
+ * 4. Never split teams across PODs
  *
- * MODE A - POD_BASED:
- * - Allocate entire departments to PODs (groups of tables)
- * - Fill tables sequentially within POD
- * - Keep teams intact on same table
- * - Managers sit with their teams
+ * PRIORITY: Department → Team → Table → Seat
  *
- * MODE B - MANAGER_BASED:
- * - Each manager gets closest possible table
- * - Manager + direct reports sit together
- * - Multiple managers of same department near each other
- *
- * CORE RULES (BOTH MODES):
- * - Leaders allocated FIRST with preference scoring
- * - ONE TEAM → ONE TABLE (never split teams)
- * - Preferences are SOFT (never break team/table integrity)
- * - Special needs employees get accessible seats
+ * ALLOCATION FLOW:
+ * 1. Group tables into PODs
+ * 2. Pre-allocate tables for each team (bin packing)
+ * 3. Allocate seats within assigned tables
+ * 4. Leaders sit with their teams (not separate)
  */
 
-import type { ReferenceSeat, EnhancedAllocatedSeat, Table, EnhancedTeam, Leader, AllocationMode, Pod } from '../types';
+import type { ReferenceSeat, EnhancedAllocatedSeat, Table, EnhancedTeam, AllocationMode, Pod } from '../types';
 import { SeatStatus } from '../types';
 import { getSeatsForTable } from './tableMapping';
-import { LEADERS, DEPARTMENTS } from '../data/organizationData';
-import { getTeamsByDepartment } from './teamFormation';
+import { DEPARTMENTS } from '../data/organizationData';
 import { groupTablesIntoPods, getTablesInPod } from './podGrouping';
 
 /**
- * Score a seat based on leader preferences (SOFT CONSTRAINTS)
- * Higher score = better match
- * Returns 0 if no preferences, positive score if preferences match
- * 
- * NEW: Uses actual seat attributes instead of coordinate heuristics
- */
-function scoreSeatForLeader(
-  seat: ReferenceSeat,
-  leader: Leader,
-  _seats: ReferenceSeat[],
-  _tables: Table[]
-): number {
-  let score = 0;
-  const prefs = leader.preferences;
-  const attrs = seat.attributes || {};
-  
-  // No preferences = all seats equally good
-  if (!prefs || Object.keys(prefs).length === 0) {
-    return 0;
-  }
-  
-  // Match preferences with seat attributes
-  // Each matched attribute adds 10 points
-  
-  if (prefs.near_window && attrs.near_window) {
-    score += 10;
-  }
-  
-  if (prefs.near_entry && attrs.near_entry) {
-    score += 10;
-  }
-  
-  if (prefs.quiet_zone && attrs.quiet_zone) {
-    score += 10;
-  }
-  
-  if (prefs.corner_edge && attrs.corner_position) {
-    score += 10;
-  }
-  
-  if (prefs.premium_seat && attrs.premium) {
-    score += 5;
-  }
-  
-  // Note: near_team preference requires distance calculation to team tables
-  // This is a future enhancement
-  
-  return score;
-}
-
-/**
- * Main allocation function with two modes
- * Returns both allocated seats and PODs
+ * Main allocation function - TABLE-STRICT MODE ONLY
  */
 export function allocateWithLeaders(
   seats: ReferenceSeat[],
   tables: Table[],
   teams: EnhancedTeam[],
-  mode: AllocationMode = 'POD_BASED'
+  _mode: AllocationMode = 'POD_BASED'  // Mode parameter kept for compatibility but not used
 ): { allocatedSeats: EnhancedAllocatedSeat[]; pods: Pod[] } {
 
-  console.log(`\n🚀 Starting Enhanced Allocation - MODE: ${mode}`);
-  console.log(`📊 Total: ${seats.length} seats, ${tables.length} tables, ${LEADERS.length} leaders, ${teams.length} teams`);
+  console.log(`\n🚀 Starting TABLE-STRICT Allocation`);
+  console.log(`📊 Total: ${seats.length} seats, ${tables.length} tables, ${teams.length} teams`);
 
-  // Create PODs for both modes (used for visualization)
+  // Create PODs for visualization and grouping
   const pods = groupTablesIntoPods(tables, 300);
 
-  if (mode === 'POD_BASED') {
-    const allocatedSeats = allocatePodBased(seats, tables, teams);
-    return { allocatedSeats, pods };
-  } else {
-    const allocatedSeats = allocateManagerBased(seats, tables, teams);
-    return { allocatedSeats, pods };
-  }
+  const allocatedSeats = allocateTableStrict(seats, tables, teams, pods);
+
+  return { allocatedSeats, pods };
 }
 
 /**
- * MODE A: POD-BASED ALLOCATION (CLUSTER-FIRST)
- * Allocate entire departments to PODs, fill tables sequentially
- * 
- * STRICT RULES:
- * 1. Same department → same POD (no jumping)
- * 2. Same team → same TABLE (hard constraint)
- * 3. Tables filled contiguously within POD
- * 4. Only overflow when POD capacity exceeded
+ * TABLE-STRICT ALLOCATION
+ * Hard constraint: Same team → Same table (or contiguous tables in same POD)
  */
-function allocatePodBased(
+function allocateTableStrict(
   seats: ReferenceSeat[],
   tables: Table[],
-  teams: EnhancedTeam[]
+  teams: EnhancedTeam[],
+  pods: Pod[]
 ): EnhancedAllocatedSeat[] {
 
   const allocatedSeats: EnhancedAllocatedSeat[] = [];
   const usedSeats = new Set<string>();
   const usedTables = new Set<string>();
 
-  console.log(`\n📦 MODE A: POD-BASED ALLOCATION (CLUSTER-FIRST - STRICT)`);
+  console.log(`\n📦 TABLE-STRICT ALLOCATION`);
+  console.log(`Created ${pods.length} PODs`);
 
-  // STEP 1: Group tables into PODs (larger radius for better clustering)
-  const pods = groupTablesIntoPods(tables, 400); // 400px max distance for better clustering
-  console.log(`\nCreated ${pods.length} PODs`);
-  
   // Log POD details
   pods.forEach(pod => {
     const podTables = getTablesInPod(tables, pod.pod_id);
@@ -141,107 +71,42 @@ function allocatePodBased(
     console.log(`  ${pod.pod_id}: ${podTables.length} tables, ${totalCapacity} seats capacity`);
   });
 
-  // PHASE 1: Allocate Leaders First (with SOFT CONSTRAINT preferences)
-  console.log(`\n👑 PHASE 1: Allocating ${LEADERS.length} Leaders (with preference scoring)`);
+  // STEP 1: Sort teams by size (largest first for better bin packing)
+  const sortedTeams = [...teams].sort((a, b) => b.members.length - a.members.length);
 
-  LEADERS.forEach(leader => {
-    const availableSeats = seats.filter(s => !usedSeats.has(s.seat_ref_id));
-
-    if (availableSeats.length === 0) {
-      console.warn(`  No seats available for ${leader.name}`);
-      return;
+  // STEP 2: Group teams by department
+  const teamsByDepartment = new Map<string, EnhancedTeam[]>();
+  DEPARTMENTS.forEach(dept => {
+    const deptTeams = sortedTeams.filter(t => t.department === dept);
+    if (deptTeams.length > 0) {
+      teamsByDepartment.set(dept, deptTeams);
     }
-
-    // Score each seat based on leader preferences
-    const scoredSeats = availableSeats.map(seat => ({
-      seat,
-      score: scoreSeatForLeader(seat, leader, seats, tables),
-    }));
-
-    // Sort by score (highest first)
-    scoredSeats.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.seat.seat_ref_id.localeCompare(b.seat.seat_ref_id);
-    });
-
-    const leaderSeat = scoredSeats[0].seat;
-    const preferenceScore = scoredSeats[0].score;
-
-    // Find leader's team for proper team assignment
-    const leaderTeam = teams.find(t => t.leader_id === leader.leader_id);
-    const teamId = leaderTeam ? leaderTeam.team_id : `LEADER_${leader.leader_id}`;
-
-    allocatedSeats.push({
-      seat_ref_id: leaderSeat.seat_ref_id,
-      x: leaderSeat.x,
-      y: leaderSeat.y,
-      seat_type: SeatStatus.ASSIGNABLE,
-      employee_id: leader.leader_id,
-      employee_name: leader.name,
-      employee_role: 'LEADER',
-      employee_gender: 'M', // Default
-      department: leader.department,
-      table_id: leaderSeat.table_id,
-      assigned_team: teamId, // Use actual team ID
-      assigned_manager: leader.name,
-    });
-
-    usedSeats.add(leaderSeat.seat_ref_id);
-
-    const prefStatus = preferenceScore > 0 ? `(score: ${preferenceScore})` : '(no prefs)';
-    console.log(`  ${leader.name} (${leader.department}) -> Seat ${leaderSeat.seat_ref_id} ${prefStatus} [Team: ${teamId}]`);
   });
 
-  // PHASE 2: Allocate Departments to PODs (CLUSTER-FIRST)
-  console.log(`\n👥 PHASE 2: Allocating Departments to PODs (CLUSTER-FIRST)`);
+  console.log(`\n👥 Allocating by Department → Team → Table`);
 
+  // STEP 3: Allocate each department to PODs
   DEPARTMENTS.forEach(department => {
-    const deptTeams = getTeamsByDepartment(department, teams);
+    const deptTeams = teamsByDepartment.get(department);
+    if (!deptTeams || deptTeams.length === 0) return;
 
-    if (deptTeams.length === 0) return;
-
-    // Calculate total department size
     const totalSize = deptTeams.reduce((sum, team) => sum + team.members.length, 0);
-
     console.log(`\n  ${department}: ${deptTeams.length} teams, ${totalSize} people`);
 
-    // Find POD with enough capacity
-    let selectedPod: Pod | null = null;
-    let selectedPodTables: Table[] = [];
+    // Find POD with enough capacity for entire department
+    const targetPod = findPodForDepartment(pods, tables, seats, usedSeats, usedTables, totalSize);
 
-    for (const pod of pods) {
-      const podTables = getTablesInPod(tables, pod.pod_id)
-        .filter(t => !usedTables.has(t.table_id));
-
-      const availableCapacity = podTables.reduce((sum, t) => {
-        const tableSeats = getSeatsForTable(seats, t.table_id);
-        const availableSeats = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
-        return sum + availableSeats.length;
-      }, 0);
-
-      if (availableCapacity >= totalSize) {
-        selectedPod = pod;
-        selectedPodTables = podTables;
-        console.log(`  ✓ Assigned to ${pod.pod_id} (capacity: ${availableCapacity})`);
-        break;
-      }
+    if (!targetPod) {
+      console.warn(`  ⚠️ No single POD with capacity for ${department}, using fallback allocation`);
     }
 
-    if (!selectedPod) {
-      console.warn(`  ⚠️ No POD with enough capacity for ${department}, using fallback`);
-      // Fallback: use any available tables
-      selectedPodTables = tables.filter(t => !usedTables.has(t.table_id));
-    }
-
-    // Sort teams by size (largest first) for better packing
-    const sortedTeams = [...deptTeams].sort((a, b) => b.members.length - a.members.length);
-
-    // Allocate each team to tables within the POD
-    sortedTeams.forEach(team => {
-      allocateTeamToTableInPod(
+    // Allocate each team in this department
+    deptTeams.forEach(team => {
+      allocateTeamStrict(
         team,
         seats,
-        selectedPodTables,
+        tables,
+        targetPod ? getTablesInPod(tables, targetPod.pod_id).filter(t => !usedTables.has(t.table_id)) : tables.filter(t => !usedTables.has(t.table_id)),
         usedSeats,
         usedTables,
         allocatedSeats
@@ -249,239 +114,103 @@ function allocatePodBased(
     });
   });
 
-  console.log(`\n✅ POD-BASED Allocation Complete: ${allocatedSeats.length} seats assigned`);
+  console.log(`\n✅ TABLE-STRICT Allocation Complete: ${allocatedSeats.length} seats assigned`);
+
+  // Validation: Check that no team is split across multiple tables
+  validateAllocation(allocatedSeats);
+
   return allocatedSeats;
 }
 
 /**
- * Helper: Allocate a team to a table within a POD
+ * Find POD with enough capacity for a department
  */
-function allocateTeamToTableInPod(
+function findPodForDepartment(
+  pods: Pod[],
+  tables: Table[],
+  seats: ReferenceSeat[],
+  usedSeats: Set<string>,
+  usedTables: Set<string>,
+  requiredCapacity: number
+): Pod | null {
+  for (const pod of pods) {
+    const podTables = getTablesInPod(tables, pod.pod_id)
+      .filter(t => !usedTables.has(t.table_id));
+
+    const availableCapacity = podTables.reduce((sum, t) => {
+      const tableSeats = getSeatsForTable(seats, t.table_id);
+      const availableSeats = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
+      return sum + availableSeats.length;
+    }, 0);
+
+    if (availableCapacity >= requiredCapacity) {
+      console.log(`  ✓ Assigned to ${pod.pod_id} (capacity: ${availableCapacity})`);
+      return pod;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Allocate a team to a table (HARD CONSTRAINT: never split team)
+ */
+function allocateTeamStrict(
   team: EnhancedTeam,
   seats: ReferenceSeat[],
-  podTables: Table[],
+  _tables: Table[],
+  availableTables: Table[],
   usedSeats: Set<string>,
   usedTables: Set<string>,
   allocatedSeats: EnhancedAllocatedSeat[]
 ): void {
 
-  // Filter out leaders (already allocated in PHASE 1)
-  const membersToAllocate = team.members.filter(m => m.role !== 'LEADER');
+  const teamSize = team.members.length;
+  console.log(`    ${team.team_name}: ${teamSize} members`);
 
-  // Special needs employees first
-  const specialNeedsMembers = membersToAllocate.filter(m => m.special_needs);
-  const regularMembers = membersToAllocate.filter(m => !m.special_needs);
-  const orderedMembers = [...specialNeedsMembers, ...regularMembers];
-
-  console.log(`    ${team.team_name}: ${membersToAllocate.length} members (excl. leader)`);
-
-  // Find table with enough capacity within this POD
+  // CRITICAL: Find table with enough capacity for ENTIRE team
   let assignedTable: Table | null = null;
 
-  for (const table of podTables) {
-    if (usedTables.has(table.table_id)) continue;
-
+  for (const table of availableTables) {
     const tableSeats = getSeatsForTable(seats, table.table_id);
     const availableSeats = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
 
-    if (availableSeats.length >= membersToAllocate.length) {
+    if (availableSeats.length >= teamSize) {
       assignedTable = table;
       break;
     }
   }
 
+  // HARD CONSTRAINT: Never split team
   if (!assignedTable) {
-    console.warn(`    ⚠️ No table in POD with capacity for ${team.team_name}`);
-    return;
+    console.error(`    ❌ CANNOT FIT TEAM ${team.team_name} (${teamSize} members) - NO TABLE WITH CAPACITY`);
+    console.error(`       Available tables:`, availableTables.map(t => {
+      const tableSeats = getSeatsForTable(seats, t.table_id);
+      const availableSeats = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
+      return `${t.table_id}(${availableSeats.length} seats)`;
+    }).join(', '));
+    return;  // Fail gracefully - don't allocate this team
   }
 
-  // Assign team to table
+  // Priority order: LEADER → MANAGER → SUB_MANAGER → EMPLOYEE
+  const orderedMembers = [
+    ...team.members.filter(m => m.role === 'LEADER'),
+    ...team.members.filter(m => m.role === 'MANAGER'),
+    ...team.members.filter(m => m.role === 'SUB_MANAGER'),
+    ...team.members.filter(m => m.role === 'EMPLOYEE'),
+  ];
+
+  // Get available seats on this table
   const tableSeats = getSeatsForTable(seats, assignedTable.table_id);
   const availableSeats = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
 
+  // Allocate all team members to this table
   orderedMembers.forEach((member, index) => {
-    if (index >= availableSeats.length) return;
-
-    const seat = availableSeats[index];
-
-    allocatedSeats.push({
-      seat_ref_id: seat.seat_ref_id,
-      x: seat.x,
-      y: seat.y,
-      seat_type: SeatStatus.ASSIGNABLE,
-      employee_id: member.employee_id,
-      employee_name: member.name,
-      employee_role: member.role,
-      employee_gender: member.gender,
-      department: team.department,
-      table_id: seat.table_id,
-      assigned_team: team.team_id,
-      assigned_manager: team.team_name,
-    });
-
-    usedSeats.add(seat.seat_ref_id);
-  });
-
-  usedTables.add(assignedTable.table_id);
-  console.log(`    ✅ Assigned to table ${assignedTable.table_id} in ${assignedTable.pod_id} [Team: ${team.team_id}]`);
-}
-
-/**
- * MODE B: MANAGER-BASED ALLOCATION
- * Each manager gets closest possible table, managers of same department near each other
- */
-function allocateManagerBased(
-  seats: ReferenceSeat[],
-  tables: Table[],
-  teams: EnhancedTeam[]
-): EnhancedAllocatedSeat[] {
-
-  const allocatedSeats: EnhancedAllocatedSeat[] = [];
-  const usedSeats = new Set<string>();
-  const usedTables = new Set<string>();
-
-  console.log(`\n👔 MODE B: MANAGER-BASED ALLOCATION`);
-
-  // PHASE 1: Allocate Leaders First (same as POD-based)
-  console.log(`\n👑 PHASE 1: Allocating ${LEADERS.length} Leaders (with preference scoring)`);
-
-  LEADERS.forEach(leader => {
-    const availableSeats = seats.filter(s => !usedSeats.has(s.seat_ref_id));
-
-    if (availableSeats.length === 0) {
-      console.warn(`  No seats available for ${leader.name}`);
+    if (index >= availableSeats.length) {
+      console.error(`    ⚠️ Not enough seats on table ${assignedTable!.table_id} for all team members`);
       return;
     }
 
-    const scoredSeats = availableSeats.map(seat => ({
-      seat,
-      score: scoreSeatForLeader(seat, leader, seats, tables),
-    }));
-
-    scoredSeats.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.seat.seat_ref_id.localeCompare(b.seat.seat_ref_id);
-    });
-
-    const leaderSeat = scoredSeats[0].seat;
-    const preferenceScore = scoredSeats[0].score;
-
-    // Find leader's team for proper team assignment
-    const leaderTeam = teams.find(t => t.leader_id === leader.leader_id);
-    const teamId = leaderTeam ? leaderTeam.team_id : `LEADER_${leader.leader_id}`;
-
-    allocatedSeats.push({
-      seat_ref_id: leaderSeat.seat_ref_id,
-      x: leaderSeat.x,
-      y: leaderSeat.y,
-      seat_type: SeatStatus.ASSIGNABLE,
-      employee_id: leader.leader_id,
-      employee_name: leader.name,
-      employee_role: 'LEADER',
-      employee_gender: 'M',
-      department: leader.department,
-      table_id: leaderSeat.table_id,
-      assigned_team: teamId, // Use actual team ID
-      assigned_manager: leader.name,
-    });
-
-    usedSeats.add(leaderSeat.seat_ref_id);
-
-    const prefStatus = preferenceScore > 0 ? `(score: ${preferenceScore})` : '(no prefs)';
-    console.log(`  ${leader.name} (${leader.department}) -> Seat ${leaderSeat.seat_ref_id} ${prefStatus} [Team: ${teamId}]`);
-  });
-
-  // PHASE 2: Allocate Teams by Manager Proximity
-  console.log(`\n👥 PHASE 2: Allocating Teams by Manager Proximity`);
-
-  // Group teams by department
-  DEPARTMENTS.forEach(department => {
-    const deptTeams = getTeamsByDepartment(department, teams);
-    console.log(`\n  ${department}: ${deptTeams.length} teams`);
-
-    deptTeams.forEach(team => {
-      allocateTeamToTable(team, seats, tables, usedSeats, usedTables, allocatedSeats);
-    });
-  });
-
-  console.log(`\n✅ MANAGER-BASED Allocation Complete: ${allocatedSeats.length} seats assigned`);
-  return allocatedSeats;
-}
-
-/**
- * Helper: Allocate a team to a table (used by both modes)
- */
-function allocateTeamToTable(
-  team: EnhancedTeam,
-  seats: ReferenceSeat[],
-  tables: Table[],
-  usedSeats: Set<string>,
-  usedTables: Set<string>,
-  allocatedSeats: EnhancedAllocatedSeat[]
-): void {
-
-  // Filter out leaders (already allocated in PHASE 1)
-  const membersToAllocate = team.members.filter(m => m.role !== 'LEADER');
-
-  // Special needs employees first
-  const specialNeedsMembers = membersToAllocate.filter(m => m.special_needs);
-  const regularMembers = membersToAllocate.filter(m => !m.special_needs);
-  const orderedMembers = [...specialNeedsMembers, ...regularMembers];
-
-  console.log(`    ${team.team_name}: ${membersToAllocate.length} members (excl. leader)`);
-
-  // Find table with enough capacity
-  let assignedTable: Table | null = null;
-
-  for (const table of tables) {
-    if (usedTables.has(table.table_id)) continue;
-
-    const tableSeats = getSeatsForTable(seats, table.table_id);
-    const availableSeats = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
-
-    if (availableSeats.length >= membersToAllocate.length) {
-      assignedTable = table;
-      break;
-    }
-  }
-
-  if (!assignedTable) {
-    console.warn(`    ⚠️ No table with capacity for ${team.team_name}`);
-
-    // Fallback: Assign to any available seats
-    orderedMembers.forEach(member => {
-      const seat = seats.find(s => !usedSeats.has(s.seat_ref_id));
-
-      if (seat) {
-        allocatedSeats.push({
-          seat_ref_id: seat.seat_ref_id,
-          x: seat.x,
-          y: seat.y,
-          seat_type: SeatStatus.ASSIGNABLE,
-          employee_id: member.employee_id,
-          employee_name: member.name,
-          employee_role: member.role,
-          employee_gender: member.gender,
-          department: team.department,
-          table_id: seat.table_id,
-          assigned_team: team.team_id,
-          assigned_manager: team.team_name,
-        });
-
-        usedSeats.add(seat.seat_ref_id);
-      }
-    });
-
-    return;
-  }
-
-  // Assign team to table
-  const tableSeats = getSeatsForTable(seats, assignedTable.table_id);
-  const availableSeats = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
-
-  orderedMembers.forEach((member, index) => {
-    if (index >= availableSeats.length) return;
-
     const seat = availableSeats[index];
 
     allocatedSeats.push({
@@ -502,6 +231,44 @@ function allocateTeamToTable(
     usedSeats.add(seat.seat_ref_id);
   });
 
+  // Mark table as used
   usedTables.add(assignedTable.table_id);
-  console.log(`    ✅ Assigned to table ${assignedTable.table_id}`);
+  console.log(`    ✅ Assigned to table ${assignedTable.table_id} (${assignedTable.pod_id || 'no-pod'})`);
+}
+
+/**
+ * Validate that allocation follows TABLE-STRICT rules
+ */
+function validateAllocation(allocatedSeats: EnhancedAllocatedSeat[]): void {
+  console.log(`\n🔍 Validating TABLE-STRICT constraints...`);
+
+  // Group seats by team
+  const seatsByTeam = new Map<string, EnhancedAllocatedSeat[]>();
+  allocatedSeats.forEach(seat => {
+    const teamId = seat.assigned_team;
+    if (teamId) {
+      if (!seatsByTeam.has(teamId)) {
+        seatsByTeam.set(teamId, []);
+      }
+      seatsByTeam.get(teamId)!.push(seat);
+    }
+  });
+
+  let violations = 0;
+
+  // Check each team sits on same table
+  seatsByTeam.forEach((seats, teamId) => {
+    const tableIds = new Set(seats.map(s => s.table_id).filter((id): id is string => id !== undefined));
+
+    if (tableIds.size > 1) {
+      violations++;
+      console.error(`  ❌ VIOLATION: Team ${teamId} split across ${tableIds.size} tables: ${Array.from(tableIds).join(', ')}`);
+    }
+  });
+
+  if (violations === 0) {
+    console.log(`  ✅ All teams on single tables (no violations)`);
+  } else {
+    console.error(`  ❌ ${violations} TABLE-STRICT violations found!`);
+  }
 }

@@ -7,14 +7,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { ReferenceSeat, AllocatedSeat, Table, EnhancedAllocatedSeat } from '../types';
-import { SEAT_COLORS, REFERENCE_SEAT_COLOR } from '../types';
+import { REFERENCE_SEAT_COLOR } from '../types';
 import './FloorPlanViewer.css';
 
-// Rendering constants - ULTRA MINIMAL PRODUCT DESIGN
-const REF_SEAT_RADIUS = 6;
-const SEAT_SIZE = 20; // Ultra small, quiet squares
-const ICON_SIZE = 12; // Tiny icon inside
-const BORDER_RADIUS = 2; // Almost no rounding
+// Rendering constants - CLEAN, ENTERPRISE-GRADE DESIGN
+const REF_SEAT_RADIUS = 12;     // Larger red dots for excellent visibility (upgraded from 9px)
+const SEAT_SIZE = 36;           // Very large squares for bigger icons (upgraded from 32px)
+const ICON_SIZE = 32;           // Maximum size icons for best clarity (upgraded from 28px)
+const BORDER_RADIUS = 4;        // Slightly rounded, modern (upgraded from 2px)
+const SEAT_BORDER_WIDTH = 1.5;  // Consistent border
+const HOVER_SCALE = 1.05;       // Subtle scale on hover
 
 interface FloorPlanViewerProps {
   imagePath: string;
@@ -30,6 +32,10 @@ interface FloorPlanViewerProps {
   isReadOnly?: boolean;
   getTeamColor?: (teamId: string) => string;
   highlightedTeam?: string | null;
+  lockedSeats?: Set<string>;  // NEW: Seats that are locked from allocation changes
+  onSeatLock?: (seatRefId: string) => void;
+  onSeatUnlock?: (seatRefId: string) => void;
+  onSeatSwap?: (seatId1: string, seatId2: string) => void;
 }
 
 interface ViewBox {
@@ -60,7 +66,12 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   isReadOnly = false,
   getTeamColor,
   highlightedTeam,
+  lockedSeats = new Set(),
+  onSeatLock,
+  onSeatUnlock,
+  onSeatSwap,
 }) => {
+  console.log('🔍 FloorPlanViewer render - isReadOnly:', isReadOnly, 'onSeatSwap:', !!onSeatSwap);
   const [imgW, setImgW] = useState(0);
   const [imgH, setImgH] = useState(0);
   const [view, setView] = useState<ViewBox>({ x: 0, y: 0, w: 0, h: 0 });
@@ -70,11 +81,12 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   const [hoveredSeat, setHoveredSeat] = useState<EnhancedAllocatedSeat | null>(null);
   const [hoveredTeam, setHoveredTeam] = useState<string | null>(null);
   const [drawingRect, setDrawingRect] = useState<DrawingRect | null>(null);
-  const [maleIcon, setMaleIcon] = useState<HTMLImageElement | null>(null);
-  const [femaleIcon, setFemaleIcon] = useState<HTMLImageElement | null>(null);
-  
+  const [draggedSeat, setDraggedSeat] = useState<AllocatedSeat | null>(null);
+
+  // Use ref to track dragged seat to avoid closure issues
+  const draggedSeatRef = useRef<AllocatedSeat | null>(null);
+
   const svgRef = useRef<SVGSVGElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Load floor plan image
   useEffect(() => {
@@ -88,17 +100,6 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
     };
     img.src = imagePath;
   }, [imagePath]);
-
-  // Load gender icons
-  useEffect(() => {
-    const male = new Image();
-    male.src = '/assets/icons/male.jpg';
-    male.onload = () => setMaleIcon(male);
-
-    const female = new Image();
-    female.src = '/assets/icons/female.webp';
-    female.onload = () => setFemaleIcon(female);
-  }, []);
 
   // Get SVG coordinates from mouse event
   const getSvgCoords = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -127,6 +128,11 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
         currentY: coords.y,
       });
       return;
+    }
+
+    // Don't start panning if we might be dragging a seat
+    if (draggedSeat) {
+      return; // Let seat handle the drag
     }
 
     // Pan mode (when not in any special mode)
@@ -264,6 +270,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   if (isPanning) cursorStyle = 'grabbing';
   else if (isReferenceMarkingMode) cursorStyle = 'crosshair';
   else if (isTableDrawingMode) cursorStyle = 'crosshair';
+  else if (draggedSeat) cursorStyle = 'grabbing';
 
   return (
     <div className="floor-plan-viewer">
@@ -273,6 +280,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
           <span className="dimension-badge">{imgW} × {imgH} pixels</span>
           <span className="zoom-badge">{Math.round(zoom * 100)}%</span>
           {isReadOnly && <span className="readonly-badge">READ-ONLY</span>}
+          {!isReadOnly && allocatedSeats.length > 0 && <span className="mode-badge" style={{ backgroundColor: '#10B981', color: 'white' }}>✋ DRAG ENABLED</span>}
           {isTableDrawingMode && <span className="mode-badge">DRAWING TABLES</span>}
           {showTableBoundaries && <span className="mode-badge">DEBUG MODE</span>}
         </div>
@@ -283,9 +291,17 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
         </div>
       </div>
 
-      <div 
+      <div
         className="viewer-canvas"
         style={{ cursor: cursorStyle }}
+        onMouseUp={() => {
+          // Cancel drag if clicking on empty space
+          if (draggedSeat) {
+            console.log('❌ CANCEL DRAG (clicked empty space)');
+            draggedSeatRef.current = null;
+            setDraggedSeat(null);
+          }
+        }}
       >
         <svg
           ref={svgRef}
@@ -327,20 +343,35 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             
             return (
               <g key={table.table_id}>
-                {/* Table background - subtle tint */}
+                {/* Table background - subtle tint with team color */}
                 <rect
                   x={table.x}
                   y={table.y}
                   width={table.width}
                   height={table.height}
                   fill={teamColor}
-                  fillOpacity={hasActiveTeam ? 0.2 : 0.05}
-                  stroke={hasActiveTeam ? teamColor : "#E0E0E0"}
-                  strokeWidth={hasActiveTeam ? 2 : 1}
-                  strokeOpacity={isFaded ? 0.2 : (hasActiveTeam ? 1 : 0.5)}
+                  fillOpacity={hasActiveTeam ? 0.15 : 0.03}
+                  stroke="transparent"
+                  strokeWidth={0}
+                  rx={8}
                   style={{ pointerEvents: 'none' }}
                 />
-                
+
+                {/* Table outline - dashed, subtle (always visible for grouping) */}
+                <rect
+                  x={table.x}
+                  y={table.y}
+                  width={table.width}
+                  height={table.height}
+                  fill="transparent"
+                  stroke={hasActiveTeam ? teamColor : "#C0C0C0"}
+                  strokeWidth={hasActiveTeam ? 2 : 1}
+                  strokeDasharray="4 4"
+                  strokeOpacity={isFaded ? 0.15 : (hasActiveTeam ? 0.8 : 0.3)}
+                  rx={8}
+                  style={{ pointerEvents: 'none' }}
+                />
+
                 {/* Table labels (only in debug/drawing mode) */}
                 {(showTableBoundaries || isTableDrawingMode) && (
                   <>
@@ -401,37 +432,70 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
             />
           ))}
 
+          {/* Drag mode indicator - shows when drag is enabled */}
+          {!isReadOnly && onSeatSwap && allocatedSeats.length > 0 && (
+            <text
+              x={imgW / 2}
+              y={30}
+              textAnchor="middle"
+              fontSize={20}
+              fontWeight="bold"
+              fill="#10B981"
+              stroke="white"
+              strokeWidth={3}
+              paintOrder="stroke"
+              style={{ pointerEvents: 'none' }}
+            >
+              ✋ DRAG MODE ACTIVE - Click any seat to drag
+            </text>
+          )}
+
           {/* Allocated seats (SQUARES WITH IMAGE ICONS - NO EMOJIS) */}
           {allocatedSeats.map((seat) => {
             // Get enhanced data for this seat
             const enhancedSeat = enhancedSeats.find(e => e.seat_ref_id === seat.seat_ref_id);
-            
-            // Get team color from parent component
-            const teamColor = getTeamColor ? getTeamColor(seat.assigned_team || '') : '#C0C0C0';
-            
+
+            // Get team color from parent component - handle undefined/empty
+            const assignedTeam = seat.assigned_team || '';
+            const teamColor = getTeamColor ? getTeamColor(assignedTeam) : '#C0C0C0';
+
             // Determine if this seat should be highlighted or faded
             const activeTeam = hoveredTeam || highlightedTeam;
-            const isHighlighted = activeTeam === seat.assigned_team;
-            const isFaded = activeTeam && activeTeam !== seat.assigned_team;
-            const isLeader = enhancedSeat?.employee_role === 'LEADER';
-            
-            // Seat background: very soft department color (always), brighter when highlighted
-            const seatBg = teamColor;
-            const seatFillOpacity = isHighlighted ? 0.5 : 0.15; // Very soft by default
-            const seatOpacity = isFaded ? 0.2 : 1;
-            
-            // Border: minimal, only visible when highlighted
-            const borderColor = isHighlighted ? teamColor : 'transparent';
-            const borderWidth = isHighlighted ? 1.5 : 0;
-            
+            const isHighlighted = activeTeam && assignedTeam && activeTeam === assignedTeam;
+            const isFaded = activeTeam && assignedTeam && activeTeam !== assignedTeam;
+
+            // Check if seat is locked
+            const isLocked = lockedSeats.has(seat.seat_ref_id);
+
+            // Check if this is a potential drop target
+            const isDragging = draggedSeat?.seat_ref_id === seat.seat_ref_id;
+            const isDropTarget = draggedSeat && draggedSeat.seat_ref_id !== seat.seat_ref_id;
+
+            // CLEAN FLAT DESIGN - Strong highlighting for better visibility
+            const seatFillColor = isFaded
+              ? `${teamColor}30`  // 20% opacity when faded (was 25%)
+              : isHighlighted
+              ? teamColor  // Full color when highlighted
+              : `${teamColor}B0`; // 70% opacity normally (was full)
+
+            const seatBorderColor = isLocked
+              ? '#F59E0B'  // Amber border for locked seats
+              : isDropTarget
+              ? '#10B981'  // Green border for drop targets
+              : isHighlighted
+              ? '#FFFFFF'  // White border when highlighted (highly visible)
+              : isFaded
+              ? 'transparent'
+              : `${teamColor}C0`; // Subtle border normally
+
             // Select icon based on gender
-            const iconSrc = enhancedSeat?.employee_gender === 'F' 
-              ? '/assets/icons/female.webp' 
+            const iconSrc = enhancedSeat?.employee_gender === 'F'
+              ? '/assets/icons/female.webp'
               : '/assets/icons/male.jpg';
-            
+
             return (
               <g key={`alloc-${seat.seat_ref_id}`}>
-                {/* Larger invisible hit area for reliable hover */}
+                {/* Larger invisible hit area for reliable hover AND drag */}
                 <rect
                   x={seat.x - SEAT_SIZE / 2 - 8}
                   y={seat.y - SEAT_SIZE / 2 - 8}
@@ -439,7 +503,8 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                   height={SEAT_SIZE + 16}
                   fill="transparent"
                   onMouseEnter={() => {
-                    if (seat.assigned_team) {
+                    if (!draggedSeat && seat.assigned_team) {
+                      console.log('🎯 Hover on seat:', seat.seat_ref_id, 'Team:', seat.assigned_team);
                       setHoveredTeam(seat.assigned_team);
                       if (enhancedSeat) {
                         setHoveredSeat(enhancedSeat);
@@ -447,27 +512,107 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                     }
                   }}
                   onMouseLeave={() => {
-                    setHoveredSeat(null);
-                    setHoveredTeam(null);
+                    if (!draggedSeat) {
+                      setHoveredSeat(null);
+                      setHoveredTeam(null);
+                    }
                   }}
-                  style={{ pointerEvents: 'all', cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+
+                    console.log('🖱️ CLICK on seat:', seat.seat_ref_id);
+                    console.log('   State draggedSeat:', draggedSeat?.seat_ref_id);
+                    console.log('   Ref draggedSeatRef:', draggedSeatRef.current?.seat_ref_id);
+                    console.log('   isReadOnly:', isReadOnly, 'onSeatSwap:', !!onSeatSwap);
+
+                    if (isReadOnly || !onSeatSwap) {
+                      console.log('⚠️ Cannot interact - blocked');
+                      return;
+                    }
+
+                    const currentDragged = draggedSeatRef.current;
+
+                    if (!currentDragged) {
+                      // Start dragging
+                      console.log('🎯 START DRAG:', seat.seat_ref_id);
+                      draggedSeatRef.current = seat;
+                      setDraggedSeat(seat);
+                      setHoveredSeat(null);
+                      setHoveredTeam(null);
+                    } else if (currentDragged.seat_ref_id === seat.seat_ref_id) {
+                      // Cancel drag - clicked same seat
+                      console.log('❌ CANCEL DRAG');
+                      draggedSeatRef.current = null;
+                      setDraggedSeat(null);
+                    } else {
+                      // Swap seats
+                      console.log('✅ EXECUTE SWAP:', currentDragged.seat_ref_id, '↔', seat.seat_ref_id);
+                      onSeatSwap(currentDragged.seat_ref_id, seat.seat_ref_id);
+                      draggedSeatRef.current = null;
+                      setDraggedSeat(null);
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (isLocked && onSeatUnlock) {
+                      onSeatUnlock(seat.seat_ref_id);
+                    } else if (!isLocked && onSeatLock) {
+                      onSeatLock(seat.seat_ref_id);
+                    }
+                  }}
+                  style={{
+                    pointerEvents: 'all',
+                    cursor: draggedSeat ? (draggedSeat.seat_ref_id === seat.seat_ref_id ? 'grabbing' : 'pointer') : (isReadOnly ? 'pointer' : 'grab')
+                  }}
                 />
-                
-                {/* Seat square - ULTRA MINIMAL (very soft colors, no borders unless highlighted) */}
+
+                {/* Single flat seat square - CLEAN ENTERPRISE DESIGN */}
                 <rect
                   x={seat.x - SEAT_SIZE / 2}
                   y={seat.y - SEAT_SIZE / 2}
                   width={SEAT_SIZE}
                   height={SEAT_SIZE}
-                  fill={seatBg}
-                  fillOpacity={seatFillOpacity * seatOpacity}
-                  stroke={borderColor}
-                  strokeWidth={borderWidth}
+                  fill={seatFillColor}
+                  stroke={seatBorderColor}
+                  strokeWidth={isHighlighted ? 3 : (isDropTarget ? 3 : (isLocked ? 2 : SEAT_BORDER_WIDTH))}
                   rx={BORDER_RADIUS}
-                  style={{ pointerEvents: 'none' }}
+                  transform={isHighlighted ? `scale(${HOVER_SCALE})` : undefined}
+                  style={{
+                    transition: 'all 0.15s ease',
+                    transformOrigin: `${seat.x}px ${seat.y}px`,
+                    pointerEvents: 'none',
+                    opacity: isDragging ? 0.4 : 1
+                  }}
                 />
-                
-                {/* Gender icon (image, centered inside seat) */}
+
+                {/* Pulsing ring for dragged seat */}
+                {isDragging && (
+                  <circle
+                    cx={seat.x}
+                    cy={seat.y}
+                    r={SEAT_SIZE / 2 + 6}
+                    fill="none"
+                    stroke="#10B981"
+                    strokeWidth={4}
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    <animate
+                      attributeName="r"
+                      values={`${SEAT_SIZE / 2 + 4};${SEAT_SIZE / 2 + 10};${SEAT_SIZE / 2 + 4}`}
+                      dur="1.5s"
+                      repeatCount="indefinite"
+                    />
+                    <animate
+                      attributeName="opacity"
+                      values="1;0.3;1"
+                      dur="1.5s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                )}
+
+                {/* Icon INSIDE square (centered, 70% opacity for subtlety, mix-blend-mode to remove white bg) */}
                 {enhancedSeat && (
                   <image
                     href={iconSrc}
@@ -475,9 +620,26 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                     y={seat.y - ICON_SIZE / 2}
                     width={ICON_SIZE}
                     height={ICON_SIZE}
-                    opacity={seatOpacity * 0.9}
-                    style={{ pointerEvents: 'none' }}
+                    opacity={isFaded ? 0.3 : 0.85}
+                    style={{
+                      pointerEvents: 'none',
+                      mixBlendMode: 'multiply'
+                    }}
                   />
+                )}
+
+                {/* Lock icon indicator for locked seats */}
+                {isLocked && (
+                  <text
+                    x={seat.x}
+                    y={seat.y + SEAT_SIZE / 2 + 12}
+                    textAnchor="middle"
+                    fontSize={10}
+                    fill="#F59E0B"
+                    style={{ pointerEvents: 'none', fontWeight: 'bold' }}
+                  >
+                    🔒
+                  </text>
                 )}
               </g>
             );
@@ -486,7 +648,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
       </div>
 
       {/* Hover tooltip with enhanced info */}
-      {hoveredSeat && (
+      {hoveredSeat && !draggedSeat && (
         <div className="info-panel">
           {(() => {
             const enhancedSeat = enhancedSeats.find(e => e.seat_ref_id === hoveredSeat.seat_ref_id);
@@ -517,6 +679,39 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
         </div>
       )}
 
+      {/* Dragging indicator */}
+      {draggedSeat && (
+        <div className="info-panel" style={{
+          backgroundColor: '#10B981',
+          color: 'white',
+          fontWeight: 'bold',
+          padding: '16px',
+          fontSize: '18px',
+          border: '3px solid white',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+        }}>
+          <div style={{ fontSize: '20px', marginBottom: '8px' }}>🔄 DRAGGING: {draggedSeat.seat_ref_id}</div>
+          <div style={{ fontSize: '16px', marginTop: '8px' }}>👉 CLICK ANOTHER SEAT TO SWAP</div>
+          <div style={{ fontSize: '14px', marginTop: '6px', opacity: 0.9 }}>Or click same seat to cancel</div>
+        </div>
+      )}
+
+      {/* Help message when drag is enabled but not dragging */}
+      {!isReadOnly && onSeatSwap && allocatedSeats.length > 0 && !draggedSeat && !hoveredSeat && (
+        <div className="info-panel" style={{
+          backgroundColor: '#3B82F6',
+          color: 'white',
+          padding: '14px',
+          border: '2px solid white',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+        }}>
+          <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>✋ CLICK TO SWAP MODE ACTIVE</div>
+          <div style={{ fontSize: '13px', marginTop: '4px' }}>1. CLICK any seat (it will highlight)</div>
+          <div style={{ fontSize: '13px', marginTop: '2px' }}>2. CLICK another seat to swap</div>
+          <div style={{ fontSize: '13px', marginTop: '2px' }}>3. Right-click to lock/unlock seats</div>
+        </div>
+      )}
+
       <div className="viewer-instructions">
         <div className="legend-title">Legend:</div>
         <span className="legend-item">
@@ -536,7 +731,7 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
               <span className="icon-male"></span> Male icon / <span className="icon-female"></span> Female icon = Employee gender
             </span>
             <span className="legend-item">
-              <span className="leader-outline"></span> Gold outline = Leader seat
+              <span className="leader-outline"></span> Silver outline = Leader seat
             </span>
           </>
         )}

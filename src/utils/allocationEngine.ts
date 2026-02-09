@@ -78,13 +78,13 @@ export function generateTeamCohesionLayout(
     }
   }
   
-  // Mark remaining seats as BUFFER
+  // Mark remaining seats as unassigned (removed BUFFER status)
   for (const seat of availableSeats) {
     allocations.push({
       seat_ref_id: seat.seat_ref_id,
       x: seat.x,
       y: seat.y,
-      seat_type: SeatStatus.BUFFER,
+      seat_type: SeatStatus.RESERVED,  // Use RESERVED for unallocated seats
     });
   }
   
@@ -174,13 +174,13 @@ export function generateManagerProximityLayout(
     }
   }
   
-  // Mark remaining seats as BUFFER
+  // Mark remaining seats as unassigned (removed BUFFER status)
   for (const seat of availableSeats) {
     allocations.push({
       seat_ref_id: seat.seat_ref_id,
       x: seat.x,
       y: seat.y,
-      seat_type: SeatStatus.BUFFER,
+      seat_type: SeatStatus.RESERVED,  // Use RESERVED for unallocated seats
     });
   }
   
@@ -232,14 +232,14 @@ export function generateSpaceEfficiencyLayout(
     }
   }
   
-  // Mark remaining seats as BUFFER
+  // Mark remaining seats as unassigned (removed BUFFER status)
   for (let i = seatIndex; i < sortedSeats.length; i++) {
     const seat = sortedSeats[i];
     allocations.push({
       seat_ref_id: seat.seat_ref_id,
       x: seat.x,
       y: seat.y,
-      seat_type: SeatStatus.BUFFER,
+      seat_type: SeatStatus.RESERVED,  // Use RESERVED for unallocated seats
     });
   }
   

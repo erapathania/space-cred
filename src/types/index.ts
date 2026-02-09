@@ -15,7 +15,6 @@ export type UserRole = typeof UserRole[keyof typeof UserRole];
 export const SeatStatus = {
   ASSIGNABLE: 'ASSIGNABLE',
   RESERVED: 'RESERVED',
-  BUFFER: 'BUFFER',
 } as const;
 
 export type SeatStatus = typeof SeatStatus[keyof typeof SeatStatus];
@@ -109,7 +108,6 @@ export interface LayoutScenario {
 export const SEAT_COLORS: Record<SeatStatus, string> = {
   [SeatStatus.ASSIGNABLE]: '#4CAF50',  // Green
   [SeatStatus.RESERVED]: '#FF9800',    // Orange
-  [SeatStatus.BUFFER]: '#9E9E9E',      // Gray
 };
 
 export const REFERENCE_SEAT_COLOR = '#FF0000';  // Red (reference dots)
