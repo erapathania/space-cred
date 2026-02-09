@@ -153,16 +153,25 @@ function findPodForDepartment(
 }
 
 /**
- * ROW-AWARE SEAT SORTING
- * Groups seats by rows (Y-coordinate) and sorts for straight-line allocation
+ * SNAKE PATTERN SEAT SORTING
+ * Implements SERPENTINE filling: no gaps, continuous flow, alternating direction per row
  *
- * PREVENTS L-SHAPED SEATING by filling rows completely before moving to next row
+ * PREVENTS:
+ * - L-shaped seating
+ * - Gaps within rows
+ * - Visual fragmentation
+ * - Random jumping between rows
+ *
+ * ENFORCES:
+ * - Continuous filling (no skipping seats)
+ * - Row 1: left→right, Row 2: right→left, Row 3: left→right, etc.
+ * - Snake pattern for visual continuity
  */
-function sortSeatsRowFirst(seats: ReferenceSeat[]): ReferenceSeat[] {
+function sortSeatsSnakePattern(seats: ReferenceSeat[]): ReferenceSeat[] {
   // Define row tolerance (seats within 20px Y are considered same row)
   const ROW_TOLERANCE = 20;
 
-  // Group seats into rows by Y-coordinate
+  // STEP 1: Group seats by row (Y-coordinate)
   const rows = new Map<number, ReferenceSeat[]>();
 
   seats.forEach(seat => {
@@ -175,18 +184,29 @@ function sortSeatsRowFirst(seats: ReferenceSeat[]): ReferenceSeat[] {
     rows.get(rowKey)!.push(seat);
   });
 
-  // Sort rows by Y-coordinate (top to bottom)
+  // STEP 2: Sort rows by Y-coordinate (top to bottom)
   const sortedRows = Array.from(rows.entries())
     .sort((a, b) => a[0] - b[0]); // Sort by rowKey (Y-coordinate)
 
-  // Within each row, sort seats by X-coordinate (left to right)
+  // STEP 3: Within each row, sort seats by X-coordinate
+  // STEP 4: Alternate direction per row (SNAKE PATTERN)
   const result: ReferenceSeat[] = [];
-  sortedRows.forEach(([_rowKey, rowSeats]) => {
+  sortedRows.forEach(([_rowKey, rowSeats], rowIndex) => {
+    // Sort by X (left to right)
     const sortedRowSeats = rowSeats.sort((a, b) => a.x - b.x);
+
+    // CRITICAL: Alternate direction per row
+    // Even rows (0, 2, 4...): left → right
+    // Odd rows  (1, 3, 5...): right → left (REVERSE)
+    if (rowIndex % 2 === 1) {
+      sortedRowSeats.reverse();
+    }
+
     result.push(...sortedRowSeats);
   });
 
-  console.log(`    📐 Row-first sorting: ${rows.size} rows detected, ${result.length} seats total`);
+  console.log(`    🐍 Snake pattern sorting: ${rows.size} rows detected, ${result.length} seats total`);
+  console.log(`    📐 Pattern: Row 1 (L→R), Row 2 (R→L), Row 3 (L→R)...`);
 
   return result;
 }
@@ -243,17 +263,20 @@ function allocateTeamStrict(
   const tableSeats = getSeatsForTable(seats, assignedTable.table_id);
   const availableSeatsRaw = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
 
-  // ✅ ROW-AWARE SORTING: Fill rows completely before moving to next row
-  // This PREVENTS L-SHAPED SEATING
-  const availableSeats = sortSeatsRowFirst(availableSeatsRaw);
+  // ✅ SNAKE PATTERN SORTING: Continuous filling with alternating direction per row
+  // This PREVENTS GAPS and ensures visual continuity
+  const availableSeats = sortSeatsSnakePattern(availableSeatsRaw);
 
-  // Allocate all team members to this table
+  // ✅ SEQUENTIAL ASSIGNMENT: No skipping, no gaps
+  // Critical rule: "Take next seat in ordered list, never skip"
   orderedMembers.forEach((member, index) => {
     if (index >= availableSeats.length) {
       console.error(`    ⚠️ Not enough seats on table ${assignedTable!.table_id} for all team members`);
       return;
     }
 
+    // CRITICAL: Sequential assignment from ordered list
+    // This enforces NO GAPS within the fill pattern
     const seat = availableSeats[index];
 
     allocatedSeats.push({
