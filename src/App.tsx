@@ -1,6 +1,6 @@
 /**
  * Main App Component - TABLE-FIRST ARCHITECTURE
- * 
+ *
  * ROLE 1: ADMIN - Setup seats AND tables
  * ROLE 2: FACILITY_USER - View table-based allocations
  */
@@ -9,8 +9,9 @@ import { useState, useEffect } from 'react';
 import { FloorPlanViewer } from './components/FloorPlanViewer';
 import { LeaderPreferenceModal } from './components/LeaderPreferenceModal';
 import { SeatAttributeModal } from './components/SeatAttributeModal';
-import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat, Leader, LeaderPreferences, SeatAttributes, AllocationMode } from './types';
-import { UserRole, SeatStatus } from './types';
+import { AdminConfigPanel } from './components/AdminConfigPanel';
+import type { ReferenceSeat, AllocatedSeat, AllocationOption, Table, EnhancedAllocatedSeat, Leader, LeaderPreferences, SeatAttributes, AllocationMode, AllocationConfig } from './types';
+import { UserRole, SeatStatus, DEFAULT_ALLOCATION_CONFIG } from './types';
 import { saveReferenceSeats, loadReferenceSeats, saveTables, loadTables } from './utils/storage';
 import { mapSeatsToTables } from './utils/tableMapping';
 import { generateManagers, generateSubManagers, generateEmployees, LEADERS } from './data/organizationData';
@@ -66,6 +67,13 @@ function App() {
 
   // Allocation mode (POD_BASED or MANAGER_BASED)
   const [allocationMode, setAllocationMode] = useState<AllocationMode>('POD_BASED');
+
+  // Allocation configuration (ADMIN VARIABLES)
+  const [allocationConfig, setAllocationConfig] = useState<AllocationConfig>(DEFAULT_ALLOCATION_CONFIG);
+
+  // Manual action modes for FACILITY_USER
+  type ManualActionMode = 'SWAP' | 'ADD' | 'DELETE' | null;
+  const [manualActionMode, setManualActionMode] = useState<ManualActionMode>(null);
 
   // Load reference seats and tables on mount
   useEffect(() => {
@@ -423,6 +431,107 @@ function App() {
     console.log('🔍 App state - currentRole:', currentRole, 'isManualEditMode:', isManualEditMode, 'isReadOnly:', isReadOnlyValue);
   }, [currentRole, isManualEditMode]);
 
+  // ============================================
+  // ADMIN CONFIG HANDLERS
+  // ============================================
+
+  const handleConfigChange = (config: AllocationConfig) => {
+    setAllocationConfig(config);
+    console.log('🔧 Config updated:', config);
+  };
+
+  const handleApplyConfig = () => {
+    // Save config to localStorage for persistence
+    localStorage.setItem('space_allocation_config', JSON.stringify(allocationConfig));
+    alert('✅ Configuration saved successfully!\n\nChanges will apply to the next allocation generation.');
+    console.log('💾 Config saved to localStorage:', allocationConfig);
+  };
+
+  // ============================================
+  // MANUAL ACTION HANDLERS (FACILITY_USER)
+  // ============================================
+
+  const handleManualActionSelect = (mode: ManualActionMode) => {
+    if (manualActionMode === mode) {
+      // Toggle off if clicking same mode
+      setManualActionMode(null);
+      setIsManualEditMode(false);
+      console.log('🔄 Manual action mode disabled');
+    } else {
+      setManualActionMode(mode);
+      setIsManualEditMode(true);
+      console.log(`🔄 Manual action mode: ${mode}`);
+    }
+  };
+
+  const handleAddSeat = (x: number, y: number) => {
+    if (manualActionMode !== 'ADD') return;
+
+    // Find the table at this location
+    const table = tables.find(t =>
+      x >= t.x && x <= t.x + t.width &&
+      y >= t.y && y <= t.y + t.height
+    );
+
+    if (!table) {
+      alert('⚠️ Cannot add seat here.\n\nSeats must be placed within a table boundary.');
+      return;
+    }
+
+    // Create new reference seat
+    const newRefSeat: ReferenceSeat = {
+      seat_ref_id: generateRefSeatId(),
+      x: Math.round(x),
+      y: Math.round(y),
+      table_id: table.table_id,
+    };
+
+    setReferenceSeats(prev => [...prev, newRefSeat]);
+    saveReferenceSeats([...referenceSeats, newRefSeat]);
+
+    // Create allocated seat (unassigned)
+    const newAllocatedSeat: EnhancedAllocatedSeat = {
+      seat_ref_id: newRefSeat.seat_ref_id,
+      x: newRefSeat.x,
+      y: newRefSeat.y,
+      seat_type: SeatStatus.RESERVED,
+      table_id: table.table_id,
+    };
+
+    setEnhancedSeats(prev => [...prev, newAllocatedSeat]);
+    setAllocatedSeats(prev => [...prev, newAllocatedSeat]);
+
+    console.log(`✅ Added seat ${newRefSeat.seat_ref_id} at (${x}, ${y}) on table ${table.table_id}`);
+  };
+
+  const handleDeleteSeat = (seatRefId: string) => {
+    if (manualActionMode !== 'DELETE') return;
+
+    const confirmed = window.confirm(
+      `Delete seat ${seatRefId}?\n\nThis will remove the seat permanently.`
+    );
+
+    if (!confirmed) return;
+
+    // Remove from reference seats
+    const updatedRefSeats = referenceSeats.filter(s => s.seat_ref_id !== seatRefId);
+    setReferenceSeats(updatedRefSeats);
+    saveReferenceSeats(updatedRefSeats);
+
+    // Remove from allocated seats
+    setEnhancedSeats(prev => prev.filter(s => s.seat_ref_id !== seatRefId));
+    setAllocatedSeats(prev => prev.filter(s => s.seat_ref_id !== seatRefId));
+
+    // Remove from locked seats
+    if (lockedSeats.has(seatRefId)) {
+      const updatedLocked = new Set(lockedSeats);
+      updatedLocked.delete(seatRefId);
+      setLockedSeats(updatedLocked);
+    }
+
+    console.log(`🗑️ Deleted seat ${seatRefId}`);
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -474,6 +583,9 @@ function App() {
             onSeatLock={handleSeatLock}
             onSeatUnlock={handleSeatUnlock}
             onSeatSwap={handleSeatSwap}
+            manualActionMode={manualActionMode}
+            onAddSeat={handleAddSeat}
+            onDeleteSeat={handleDeleteSeat}
           />
         </div>
 
@@ -599,6 +711,16 @@ function App() {
                   </button>
                 </div>
               </div>
+
+              <div className="panel">
+                <h3>⚙️ Allocation Configuration</h3>
+                <p className="hint">Configure global allocation variables and behavior</p>
+                <AdminConfigPanel
+                  config={allocationConfig}
+                  onConfigChange={handleConfigChange}
+                  onApplyConfig={handleApplyConfig}
+                />
+              </div>
             </>
           )}
 
@@ -674,6 +796,74 @@ function App() {
                       color: 'var(--text-primary)'
                     }}>
                       💡 Tip: Click and drag seats on the floor plan to reposition them
+                    </div>
+                  )}
+
+                  {isManualEditMode && (
+                    <div className="manual-options-panel" style={{ marginTop: '20px' }}>
+                      <h4>🔧 Manual Actions</h4>
+                      <div className="manual-actions-grid">
+                        <button
+                          className={`manual-action-btn ${manualActionMode === 'SWAP' ? 'active' : ''}`}
+                          onClick={() => handleManualActionSelect('SWAP')}
+                        >
+                          <div className="manual-action-icon">🔄</div>
+                          <div className="manual-action-label">Swap Seats</div>
+                        </button>
+                        <button
+                          className={`manual-action-btn ${manualActionMode === 'ADD' ? 'active' : ''}`}
+                          onClick={() => handleManualActionSelect('ADD')}
+                        >
+                          <div className="manual-action-icon">➕</div>
+                          <div className="manual-action-label">Add Seat</div>
+                        </button>
+                        <button
+                          className={`manual-action-btn ${manualActionMode === 'DELETE' ? 'active' : ''}`}
+                          onClick={() => handleManualActionSelect('DELETE')}
+                        >
+                          <div className="manual-action-icon">🗑️</div>
+                          <div className="manual-action-label">Delete Seat</div>
+                        </button>
+                      </div>
+                      {manualActionMode === 'SWAP' && (
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '8px 12px',
+                          background: 'rgba(127, 169, 155, 0.15)',
+                          border: '1px solid var(--accent-green)',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          color: 'var(--cream)'
+                        }}>
+                          Click first seat, then click second seat to swap
+                        </div>
+                      )}
+                      {manualActionMode === 'ADD' && (
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '8px 12px',
+                          background: 'rgba(127, 169, 155, 0.15)',
+                          border: '1px solid var(--accent-green)',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          color: 'var(--cream)'
+                        }}>
+                          Click on the floor plan (within a table) to add a new seat
+                        </div>
+                      )}
+                      {manualActionMode === 'DELETE' && (
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '8px 12px',
+                          background: 'rgba(166, 89, 89, 0.15)',
+                          border: '1px solid #A65959',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          color: 'var(--cream)'
+                        }}>
+                          Click on any seat to delete it permanently
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

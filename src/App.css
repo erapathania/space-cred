@@ -888,3 +888,258 @@ body {
   color: var(--cream-darker);
   letter-spacing: 0.3px;
 }
+
+/* ============================================================================
+   ADMIN CONFIG PANEL - Configuration Management
+   ============================================================================ */
+
+.admin-config-panel {
+  background: linear-gradient(135deg, rgba(45, 45, 45, 0.98) 0%, rgba(50, 50, 50, 0.98) 100%);
+  border: 1px solid rgba(192, 192, 192, 0.15);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 8px 32px var(--shadow-heavy);
+  backdrop-filter: blur(16px);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.admin-config-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.admin-config-panel::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.admin-config-panel::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--silver-dark) 0%, var(--silver) 100%);
+  border-radius: 8px;
+}
+
+.admin-config-panel h2 {
+  margin: 0 0 16px 0;
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--silver);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border-bottom: 2px solid rgba(192, 192, 192, 0.2);
+  padding-bottom: 16px;
+}
+
+.admin-config-panel .config-description {
+  font-size: 13px;
+  color: var(--cream-darker);
+  margin-bottom: 32px;
+  line-height: 1.7;
+  letter-spacing: 0.5px;
+}
+
+.config-section {
+  background: linear-gradient(135deg, rgba(55, 55, 55, 0.5) 0%, rgba(50, 50, 50, 0.5) 100%);
+  border: 1px solid rgba(192, 192, 192, 0.15);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  transition: all 0.3s ease;
+}
+
+.config-section:hover {
+  border-color: rgba(192, 192, 192, 0.3);
+  box-shadow: 0 4px 16px var(--shadow-medium);
+}
+
+.config-section h3 {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--silver-light);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(60, 60, 60, 0.3);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.config-row:hover {
+  background: rgba(70, 70, 70, 0.4);
+}
+
+.config-row label {
+  font-size: 13px;
+  color: var(--cream);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.config-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--silver);
+}
+
+.config-row input[type="number"],
+.config-row select {
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(40, 40, 40, 0.8) 0%, rgba(45, 45, 45, 0.8) 100%);
+  border: 1px solid rgba(192, 192, 192, 0.2);
+  border-radius: 8px;
+  color: var(--cream);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  letter-spacing: 0.5px;
+  min-width: 120px;
+}
+
+.config-row input[type="number"]:hover,
+.config-row select:hover {
+  border-color: var(--silver);
+}
+
+.config-row input[type="number"]:focus,
+.config-row select:focus {
+  outline: none;
+  border-color: var(--silver);
+  box-shadow: 0 0 12px var(--silver-glow);
+}
+
+.help-text {
+  font-size: 11px;
+  color: var(--cream-darker);
+  font-style: italic;
+  letter-spacing: 0.3px;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(50, 50, 50, 0.4);
+  border-radius: 8px;
+  width: 100%;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--cream);
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.checkbox-label:hover {
+  background: rgba(70, 70, 70, 0.4);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--silver);
+}
+
+.config-actions {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 2px solid rgba(192, 192, 192, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.config-actions .help-text {
+  text-align: center;
+}
+
+/* FACILITY USER MANUAL OPTIONS */
+.manual-options-panel {
+  background: linear-gradient(135deg, rgba(55, 55, 55, 0.5) 0%, rgba(50, 50, 50, 0.5) 100%);
+  border: 1px solid rgba(192, 192, 192, 0.15);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.manual-options-panel h4 {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--silver-light);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.manual-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.manual-action-btn {
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(60, 60, 60, 0.5) 0%, rgba(55, 55, 55, 0.5) 100%);
+  border: 2px solid rgba(192, 192, 192, 0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.manual-action-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(70, 70, 70, 0.6) 0%, rgba(65, 65, 65, 0.6) 100%);
+  border-color: var(--silver);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px var(--shadow-medium);
+}
+
+.manual-action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.manual-action-btn.active {
+  background: linear-gradient(135deg, var(--accent-green) 0%, #6A9188 100%);
+  border-color: var(--accent-green);
+  box-shadow: 0 6px 20px rgba(127, 169, 155, 0.4);
+}
+
+.manual-action-icon {
+  font-size: 24px;
+}
+
+.manual-action-label {
+  font-size: 12px;
+  color: var(--cream);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.manual-action-btn.active .manual-action-label {
+  color: var(--cream);
+  font-weight: 600;
+}

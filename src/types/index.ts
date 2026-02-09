@@ -219,3 +219,79 @@ export interface ManualOverride {
   previous_employee_id?: string;
   timestamp: number;
 }
+
+// ============================================================================
+// ADMIN CONFIGURATION VARIABLES (GLOBAL CONFIG)
+// ============================================================================
+
+export type AttendanceMode = 'FULL' | 'HYBRID_50' | 'HYBRID_75' | 'CUSTOM';
+export type BufferScope = 'GLOBAL' | 'PER_DEPARTMENT' | 'PER_POD' | 'PER_TABLE';
+export type BufferPriority = 'DISTRIBUTED' | 'END_OF_FLOOR' | 'BETWEEN_DEPARTMENTS';
+export type AllocationStrategyType = 'POD_BASED' | 'TEAM_COHESION' | 'MANAGER_PROXIMITY' | 'SPACE_EFFICIENCY';
+export type LeaderPreferenceType = 'NEAR_WINDOW' | 'NEAR_ENTRY' | 'QUIET_ZONE' | 'CORNER_EDGE' | 'NEAR_TEAM';
+
+// Admin-controlled allocation configuration
+export interface AllocationConfig {
+  // 1. ATTENDANCE & CAPACITY CONTROLS
+  attendance_mode: AttendanceMode;
+  attendance_percentage: number;  // 0-100 (for CUSTOM mode)
+  overbooking_allowed: boolean;
+  overbooking_percentage: number; // e.g., 110 = allow 10% overbooking
+
+  // 2. BUFFER STRATEGY
+  buffer_enabled: boolean;
+  buffer_percentage: number;  // e.g., 10 = 10% of total seats remain unassigned
+  buffer_scope: BufferScope;
+  buffer_priority: BufferPriority;
+
+  // 3. ALLOCATION MODE
+  allocation_strategy: AllocationStrategyType;
+  strict_table_constraint: boolean;  // Teams never split across tables
+  allow_table_spillover: boolean;  // Allow large teams to use adjacent tables in same POD
+  prioritize_department_clustering: boolean;
+
+  // 4. OVERRIDE & LOCKING
+  allow_manual_override: boolean;
+  override_role: 'ADMIN' | 'FACILITY_USER' | 'BOTH';
+  lock_after_publish: boolean;  // Lock allocation after publishing
+  preserve_locked_seats_on_regenerate: boolean;
+
+  // 5. LEADER/PREMIUM PREFERENCES
+  leader_priority_enabled: boolean;
+  leader_preference_types: LeaderPreferenceType[];
+  max_premium_seats_percent: number;  // e.g., 20 = max 20% of seats can be premium
+  premium_seat_allocation_priority: 'LEADER_FIRST' | 'SENIORITY_BASED' | 'NONE';
+}
+
+// Default configuration
+export const DEFAULT_ALLOCATION_CONFIG: AllocationConfig = {
+  // Attendance & Capacity
+  attendance_mode: 'FULL',
+  attendance_percentage: 100,
+  overbooking_allowed: false,
+  overbooking_percentage: 100,
+
+  // Buffer Strategy
+  buffer_enabled: false,
+  buffer_percentage: 0,
+  buffer_scope: 'GLOBAL',
+  buffer_priority: 'DISTRIBUTED',
+
+  // Allocation Mode
+  allocation_strategy: 'POD_BASED',
+  strict_table_constraint: true,
+  allow_table_spillover: false,
+  prioritize_department_clustering: true,
+
+  // Override & Locking
+  allow_manual_override: true,
+  override_role: 'BOTH',
+  lock_after_publish: false,
+  preserve_locked_seats_on_regenerate: true,
+
+  // Leader/Premium Preferences
+  leader_priority_enabled: false,
+  leader_preference_types: [],
+  max_premium_seats_percent: 0,
+  premium_seat_allocation_priority: 'NONE',
+};

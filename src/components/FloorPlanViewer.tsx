@@ -36,6 +36,9 @@ interface FloorPlanViewerProps {
   onSeatLock?: (seatRefId: string) => void;
   onSeatUnlock?: (seatRefId: string) => void;
   onSeatSwap?: (seatId1: string, seatId2: string) => void;
+  manualActionMode?: 'SWAP' | 'ADD' | 'DELETE' | null; // NEW: Manual action mode
+  onAddSeat?: (x: number, y: number) => void; // NEW: Add seat handler
+  onDeleteSeat?: (seatRefId: string) => void; // NEW: Delete seat handler
 }
 
 interface ViewBox {
@@ -70,6 +73,9 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
   onSeatLock,
   onSeatUnlock,
   onSeatSwap,
+  manualActionMode = null,
+  onAddSeat,
+  onDeleteSeat,
 }) => {
   console.log('🔍 FloorPlanViewer render - isReadOnly:', isReadOnly, 'onSeatSwap:', !!onSeatSwap);
   const [imgW, setImgW] = useState(0);
@@ -210,11 +216,22 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
 
   // Handle click (for seat marking)
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    // ADMIN: Reference marking mode
     if (isReferenceMarkingMode && onDirectClick) {
       const coords = getSvgCoords(e);
       if (coords) {
         onDirectClick(coords.x, coords.y);
       }
+      return;
+    }
+
+    // FACILITY_USER: Add seat mode
+    if (manualActionMode === 'ADD' && onAddSeat) {
+      const coords = getSvgCoords(e);
+      if (coords) {
+        onAddSeat(coords.x, coords.y);
+      }
+      return;
     }
   };
 
@@ -522,11 +539,21 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                     e.preventDefault();
 
                     console.log('🖱️ CLICK on seat:', seat.seat_ref_id);
+                    console.log('   manualActionMode:', manualActionMode);
+
+                    // DELETE mode - delete seat
+                    if (manualActionMode === 'DELETE' && onDeleteSeat) {
+                      console.log('🗑️ DELETE seat:', seat.seat_ref_id);
+                      onDeleteSeat(seat.seat_ref_id);
+                      return;
+                    }
+
+                    // SWAP mode - swap seats
                     console.log('   State draggedSeat:', draggedSeat?.seat_ref_id);
                     console.log('   Ref draggedSeatRef:', draggedSeatRef.current?.seat_ref_id);
                     console.log('   isReadOnly:', isReadOnly, 'onSeatSwap:', !!onSeatSwap);
 
-                    if (isReadOnly || !onSeatSwap) {
+                    if (isReadOnly || !onSeatSwap || manualActionMode !== 'SWAP') {
                       console.log('⚠️ Cannot interact - blocked');
                       return;
                     }

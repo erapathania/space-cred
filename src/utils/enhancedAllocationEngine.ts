@@ -153,6 +153,45 @@ function findPodForDepartment(
 }
 
 /**
+ * ROW-AWARE SEAT SORTING
+ * Groups seats by rows (Y-coordinate) and sorts for straight-line allocation
+ *
+ * PREVENTS L-SHAPED SEATING by filling rows completely before moving to next row
+ */
+function sortSeatsRowFirst(seats: ReferenceSeat[]): ReferenceSeat[] {
+  // Define row tolerance (seats within 20px Y are considered same row)
+  const ROW_TOLERANCE = 20;
+
+  // Group seats into rows by Y-coordinate
+  const rows = new Map<number, ReferenceSeat[]>();
+
+  seats.forEach(seat => {
+    // Round Y to nearest ROW_TOLERANCE to group nearby seats
+    const rowKey = Math.round(seat.y / ROW_TOLERANCE) * ROW_TOLERANCE;
+
+    if (!rows.has(rowKey)) {
+      rows.set(rowKey, []);
+    }
+    rows.get(rowKey)!.push(seat);
+  });
+
+  // Sort rows by Y-coordinate (top to bottom)
+  const sortedRows = Array.from(rows.entries())
+    .sort((a, b) => a[0] - b[0]); // Sort by rowKey (Y-coordinate)
+
+  // Within each row, sort seats by X-coordinate (left to right)
+  const result: ReferenceSeat[] = [];
+  sortedRows.forEach(([_rowKey, rowSeats]) => {
+    const sortedRowSeats = rowSeats.sort((a, b) => a.x - b.x);
+    result.push(...sortedRowSeats);
+  });
+
+  console.log(`    📐 Row-first sorting: ${rows.size} rows detected, ${result.length} seats total`);
+
+  return result;
+}
+
+/**
  * Allocate a team to a table (HARD CONSTRAINT: never split team)
  */
 function allocateTeamStrict(
@@ -202,7 +241,11 @@ function allocateTeamStrict(
 
   // Get available seats on this table
   const tableSeats = getSeatsForTable(seats, assignedTable.table_id);
-  const availableSeats = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
+  const availableSeatsRaw = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
+
+  // ✅ ROW-AWARE SORTING: Fill rows completely before moving to next row
+  // This PREVENTS L-SHAPED SEATING
+  const availableSeats = sortSeatsRowFirst(availableSeatsRaw);
 
   // Allocate all team members to this table
   orderedMembers.forEach((member, index) => {
