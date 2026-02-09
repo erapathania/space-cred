@@ -153,60 +153,63 @@ function findPodForDepartment(
 }
 
 /**
- * SNAKE PATTERN SEAT SORTING
- * Implements SERPENTINE filling: no gaps, continuous flow, alternating direction per row
+ * COLUMN-FIRST SEAT SORTING
+ * Treats vertical seat pairs as single column units (bench seating style)
+ *
+ * CORRECT MENTAL MODEL:
+ * Seats arranged in columns (front + back pairs), NOT independent rows
+ *
+ * Example layout:
+ * [A1] [A2] [A3] [A4] [A5]  ← Front row
+ * [B1] [B2] [B3] [B4] [B5]  ← Back row
+ *   ↕    ↕    ↕    ↕    ↕
+ *   Column 1, 2, 3, 4, 5
+ *
+ * GOLDEN RULE:
+ * "If a seat exists directly behind/in front of an occupied seat,
+ *  it MUST be filled before moving laterally."
  *
  * PREVENTS:
+ * - Wasted seats (6th person jumping to opposite side)
+ * - Gaps within columns
  * - L-shaped seating
- * - Gaps within rows
  * - Visual fragmentation
- * - Random jumping between rows
  *
- * ENFORCES:
- * - Continuous filling (no skipping seats)
- * - Row 1: left→right, Row 2: right→left, Row 3: left→right, etc.
- * - Snake pattern for visual continuity
+ * FILL ORDER:
+ * A1 → B1 → A2 → B2 → A3 → B3 → ...
+ * (Column 1, then Column 2, then Column 3, etc.)
  */
-function sortSeatsSnakePattern(seats: ReferenceSeat[]): ReferenceSeat[] {
-  // Define row tolerance (seats within 20px Y are considered same row)
-  const ROW_TOLERANCE = 20;
+function sortSeatsColumnFirst(seats: ReferenceSeat[]): ReferenceSeat[] {
+  // Define column tolerance (seats within 30px X are considered same column)
+  const COLUMN_TOLERANCE = 30;
 
-  // STEP 1: Group seats by row (Y-coordinate)
-  const rows = new Map<number, ReferenceSeat[]>();
+  // STEP 1: Group seats by column (X-coordinate)
+  const columns = new Map<number, ReferenceSeat[]>();
 
   seats.forEach(seat => {
-    // Round Y to nearest ROW_TOLERANCE to group nearby seats
-    const rowKey = Math.round(seat.y / ROW_TOLERANCE) * ROW_TOLERANCE;
+    // Round X to nearest COLUMN_TOLERANCE to group column pairs
+    const columnKey = Math.round(seat.x / COLUMN_TOLERANCE) * COLUMN_TOLERANCE;
 
-    if (!rows.has(rowKey)) {
-      rows.set(rowKey, []);
+    if (!columns.has(columnKey)) {
+      columns.set(columnKey, []);
     }
-    rows.get(rowKey)!.push(seat);
+    columns.get(columnKey)!.push(seat);
   });
 
-  // STEP 2: Sort rows by Y-coordinate (top to bottom)
-  const sortedRows = Array.from(rows.entries())
-    .sort((a, b) => a[0] - b[0]); // Sort by rowKey (Y-coordinate)
+  // STEP 2: Sort columns left to right (by X-coordinate)
+  const sortedColumns = Array.from(columns.entries())
+    .sort((a, b) => a[0] - b[0]); // Sort by columnKey (X-coordinate)
 
-  // STEP 3: Within each row, sort seats by X-coordinate
-  // STEP 4: Alternate direction per row (SNAKE PATTERN)
+  // STEP 3: Within each column, sort seats front to back (by Y-coordinate)
+  // This ensures A1 comes before B1
   const result: ReferenceSeat[] = [];
-  sortedRows.forEach(([_rowKey, rowSeats], rowIndex) => {
-    // Sort by X (left to right)
-    const sortedRowSeats = rowSeats.sort((a, b) => a.x - b.x);
-
-    // CRITICAL: Alternate direction per row
-    // Even rows (0, 2, 4...): left → right
-    // Odd rows  (1, 3, 5...): right → left (REVERSE)
-    if (rowIndex % 2 === 1) {
-      sortedRowSeats.reverse();
-    }
-
-    result.push(...sortedRowSeats);
+  sortedColumns.forEach(([_columnKey, columnSeats]) => {
+    const sortedColumnSeats = columnSeats.sort((a, b) => a.y - b.y); // Front (low Y) → Back (high Y)
+    result.push(...sortedColumnSeats);
   });
 
-  console.log(`    🐍 Snake pattern sorting: ${rows.size} rows detected, ${result.length} seats total`);
-  console.log(`    📐 Pattern: Row 1 (L→R), Row 2 (R→L), Row 3 (L→R)...`);
+  console.log(`    📐 Column-first sorting: ${columns.size} columns detected, ${result.length} seats total`);
+  console.log(`    🎯 Fill pattern: Col1(Front→Back), Col2(Front→Back), Col3(Front→Back)...`);
 
   return result;
 }
@@ -263,9 +266,10 @@ function allocateTeamStrict(
   const tableSeats = getSeatsForTable(seats, assignedTable.table_id);
   const availableSeatsRaw = tableSeats.filter(s => !usedSeats.has(s.seat_ref_id));
 
-  // ✅ SNAKE PATTERN SORTING: Continuous filling with alternating direction per row
-  // This PREVENTS GAPS and ensures visual continuity
-  const availableSeats = sortSeatsSnakePattern(availableSeatsRaw);
+  // ✅ COLUMN-FIRST SORTING: Fill column pairs (front+back) before moving laterally
+  // This PREVENTS WASTED SEATS and ensures seat directly behind is filled first
+  // GOLDEN RULE: "Seat directly behind must be filled before moving laterally"
+  const availableSeats = sortSeatsColumnFirst(availableSeatsRaw);
 
   // ✅ SEQUENTIAL ASSIGNMENT: No skipping, no gaps
   // Critical rule: "Take next seat in ordered list, never skip"
